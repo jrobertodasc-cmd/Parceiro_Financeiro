@@ -43,14 +43,15 @@ export default function Page() {
   const totals = useMemo(()=> {
     const entradas = transactions.filter(t=>t.tipo==='Entrada').reduce((s,t)=>s+Number(t.valor),0);
     const saidas = transactions.filter(t=>t.tipo==='Saída').reduce((s,t)=>s+Number(t.valor),0);
-    const entradasReal = transactions.filter(t=>t.tipo==='Entrada' && ['realizado','pago','a_receber'].includes((t as any).status || '') || ! (t as any).status).reduce((s,t)=>s+Number(t.valor),0);
+    const entradasRealizadas = contas.realizadas.filter(t=>t.tipo==='Entrada').reduce((s,t)=>s+Number(t.valor),0);
+    const saidasRealizadas = contas.realizadas.filter(t=>t.tipo==='Saída').reduce((s,t)=>s+Number(t.valor),0);
     const aReceber = contas.aReceber.reduce((s,t)=>s+Number(t.valor),0);
     const aPagar = contas.aPagar.reduce((s,t)=>s+Number(t.valor),0);
     const porCategoria = transactions.filter(t=>t.tipo==='Saída').reduce((acc: any, t)=>{ acc[t.categoria] = (acc[t.categoria]||0)+Number(t.valor); return acc; },{});
     const maiorVilao = Object.entries(porCategoria).sort((a:any,b:any)=>b[1]-a[1])[0];
     const fixo = porCategoria['Fixo']||0; const variavel = porCategoria['Variável']||0; const fornecedor = porCategoria['Fornecedor']||0; const imposto = porCategoria['Imposto']||0;
     const lucroLiquido = entradas - saidas;
-    return { entradas, saidas, saldo: entradas - saidas, lucroLiquido, receitaBruta: entradas, margem: entradas ? (lucroLiquido/entradas*100) : 0, maiorVilao: maiorVilao ? maiorVilao[0] : 'Fixo', porCategoria, fixo, variavel, fornecedor, imposto, aReceber, aPagar, lucroBruto: entradas-(fornecedor+variavel) };
+    return { entradas, saidas, saldo: entradasRealizadas - saidasRealizadas, lucroLiquido, receitaBruta: entradas, margem: entradas ? (lucroLiquido/entradas*100) : 0, maiorVilao: maiorVilao ? maiorVilao[0] : 'Fixo', porCategoria, fixo, variavel, fornecedor, imposto, aReceber, aPagar, lucroBruto: entradas-(fornecedor+variavel) };
   }, [transactions, contas]);
 
   const chartData = useMemo(()=> {
