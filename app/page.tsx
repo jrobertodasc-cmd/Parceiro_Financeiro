@@ -190,11 +190,11 @@ export default function Page() {
           if (form.tipo === 'Saída') {
             if (form.impostos && Number(form.impostos) > 0) {
               const vIss = getNextBusinessDay(novaData, 5);
-              novas.push({ id: generateUUID(), data: vIss, descricao: `GUIA DE IMPOSTO (ISS) REF. ${form.descricao.toUpperCase()}`, categoria: '12302 - Impostos - ISS', tipo: 'Saída', valor: Number(form.impostos), status: 'a_pagar', data_vencimento: vIss, empresa: form.empresa });
+              novas.push({ id: generateUUID(), data: vIss, descricao: `GUIA DE IMPOSTO (ISS) REF. ${form.descricao.toUpperCase()}`, categoria: '12302 - Imposto - ISS', tipo: 'Saída', valor: Number(form.impostos), status: 'a_pagar', data_vencimento: vIss, empresa: form.empresa });
             }
             if (form.impostos_federais && Number(form.impostos_federais) > 0) {
               const vFed = getNextBusinessDay(novaData, 20);
-              novas.push({ id: generateUUID(), data: vFed, descricao: `GUIA DE IMPOSTO (FEDERAL) REF. ${form.descricao.toUpperCase()}`, categoria: '12301 - Impostos - Simples Nacional/DAS', tipo: 'Saída', valor: Number(form.impostos_federais), status: 'a_pagar', data_vencimento: vFed, empresa: form.empresa });
+              novas.push({ id: generateUUID(), data: vFed, descricao: `GUIA DE IMPOSTO (FEDERAL) REF. ${form.descricao.toUpperCase()}`, categoria: '12301 - Imposto - Simples Nacional/DAS', tipo: 'Saída', valor: Number(form.impostos_federais), status: 'a_pagar', data_vencimento: vFed, empresa: form.empresa });
             }
           }
         }
