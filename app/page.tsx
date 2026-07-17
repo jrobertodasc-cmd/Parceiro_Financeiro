@@ -383,9 +383,18 @@ export default function Page() {
                 </div>
                 <div>
                   <label className="text-[11px] text-zinc-500">{budgetForm.tipo==='Receita' ? 'Qual Loja?' : 'Qual Categoria/Centro de Custo?'}</label>
-                  <select value={budgetForm.referencia} onChange={e=>setBudgetForm({...budgetForm, referencia: e.target.value})} className="w-full border rounded-xl p-3 text-sm truncate">
-                    {budgetForm.tipo === 'Receita' ? <><option>BOAH MATRIZ</option><option>SDB</option><option>VILAS</option><option>PASEO</option><option>BARRA</option><option>SOLAR (ADM)</option></> : CATEGORIAS.map(c=><option key={c} value={c}>{c}</option>)}
-                  </select>
+                  {budgetForm.tipo === 'Receita' ? (
+                    <select value={budgetForm.referencia} onChange={e=>setBudgetForm({...budgetForm, referencia: e.target.value})} className="w-full border rounded-xl p-3 text-sm truncate">
+                      <option>BOAH MATRIZ</option><option>SDB</option><option>VILAS</option><option>PASEO</option><option>BARRA</option><option>SOLAR (ADM)</option>
+                    </select>
+                  ) : (
+                    <>
+                      <input list="categorias-list-budget" value={budgetForm.referencia} onChange={e=>setBudgetForm({...budgetForm, referencia: e.target.value})} placeholder="Busque ou digite a categoria..." className="w-full border rounded-xl p-3 text-sm truncate" />
+                      <datalist id="categorias-list-budget">
+                        {CATEGORIAS.map(c=><option key={c} value={c}>{c}</option>)}
+                      </datalist>
+                    </>
+                  )}
                 </div>
                 <div>
                   <label className="text-[11px] text-zinc-500">Valor Projetado (R$)</label>
@@ -473,7 +482,14 @@ export default function Page() {
 
             <div className="grid grid-cols-2 gap-3">
               <div><label className="text-[11px] text-zinc-500">Vencimento</label><input type="date" value={form.vencimento} onChange={e=>setForm({...form, vencimento: e.target.value})} className="w-full border rounded-xl p-3 text-sm"/></div>
-              <div><label className="text-[11px] text-zinc-500">Categoria</label><select value={form.categoria} onChange={e=>setForm({...form, categoria: e.target.value})} className="w-full border rounded-xl p-3 pr-8 text-sm truncate"><optgroup label="Gerais"><option>Fixo</option><option>Variável</option><option>Venda</option><option>Fornecedor</option><option>Imposto</option><option>Outros</option></optgroup><optgroup label="Plano de Contas">{CATEGORIAS.map(c=><option key={c} value={c}>{c}</option>)}</optgroup></select></div>
+              <div>
+                <label className="text-[11px] text-zinc-500">Categoria (busque ou digite)</label>
+                <input list="categorias-list" value={form.categoria} onChange={e=>setForm({...form, categoria: e.target.value})} placeholder="Selecione ou digite..." className="w-full border rounded-xl p-3 text-sm truncate"/>
+                <datalist id="categorias-list">
+                  <option value="Fixo" /><option value="Variável" /><option value="Venda" /><option value="Fornecedor" /><option value="Imposto" /><option value="Outros" />
+                  {CATEGORIAS.map(c=><option key={c} value={c}>{c}</option>)}
+                </datalist>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
