@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Transaction } from '@/lib/supabase';
 import { generateMockTransactions } from '@/lib/mock';
 import { classifyWithAI } from '@/lib/classify';
-import { TrendingUp, TrendingDown, BarChart3, Upload, Plus, Search, LogOut, Sparkles, Send, X, MessageCircle, Download, FileSpreadsheet, Calendar, AlertTriangle, Check, Clock } from 'lucide-react';
+import { TrendingUp, TrendingDown, BarChart3, Upload, Plus, Search, LogOut, Sparkles, Send, X, MessageCircle, Download, FileSpreadsheet, Calendar, AlertTriangle, Check, Clock, Pencil, Trash2, Undo2 } from 'lucide-react';
 import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area, AreaChart } from 'recharts';
 import Papa from 'papaparse';
 import { CATEGORIAS } from '@/lib/categorias';
@@ -27,6 +27,7 @@ export default function Page() {
   const [form, setForm] = useState({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: "Saída" as any, categoria: "Fornecedor" as any, status: "a_pagar" as any, observacao: "", itens: "", impostos: "" });
   const [csvPreview, setCsvPreview] = useState<Transaction[]>([]);
   const [dupWarning, setDupWarning] = useState<string>("");
+  const [editingId, setEditingId] = useState<string|null>(null);
 
   useEffect(() => {
     fetch('/api/transactions').then(r=>r.json()).then(d=>{ if (Array.isArray(d) && d.length > 0) setTransactions(d); }).catch(()=>{});
@@ -87,16 +88,38 @@ export default function Page() {
 
   async function handleAdd() {
     if (!form.descricao || !form.valor) return alert("Preencha descrição e valor");
-    if (checkDuplicate(form.descricao, form.valor, form.vencimento)) { if (!confirm("Detectamos duplicado! Deseja salvar mesmo assim?")) return; }
-    const nova: any = { id: Math.random().toString(36).slice(2), data: form.data, descricao: form.descricao.toUpperCase(), categoria: form.categoria, tipo: form.tipo, valor: Number(form.valor), status: form.status, data_vencimento: form.vencimento, observacao: form.observacao, itens: form.itens, impostos: form.impostos ? Number(form.impostos) : null };
-    setTransactions([nova, ...transactions]); setShowModal(false);
-    try { const r = await fetch('/api/transactions', { method: 'POST', body: JSON.stringify(nova) }); const j = await r.json(); if (j.duplicados?.length) alert(`Duplicado bloqueado no banco: ${j.duplicados[0].descricao}`); } catch(e){}
+    
+    if (editingId) {
+      const nova: any = { id: editingId, data: form.data, descricao: form.descricao.toUpperCase(), categoria: form.categoria, tipo: form.tipo, valor: Number(form.valor), status: form.status, data_vencimento: form.vencimento, observacao: form.observacao, itens: form.itens, impostos: form.impostos ? Number(form.impostos) : null };
+      setTransactions(transactions.map(t => t.id === editingId ? nova : t)); setShowModal(false); setEditingId(null);
+      try { await fetch('/api/transactions', { method: 'PATCH', body: JSON.stringify(nova) }); } catch(e){}
+    } else {
+      if (checkDuplicate(form.descricao, form.valor, form.vencimento)) { if (!confirm("Detectamos duplicado! Deseja salvar mesmo assim?")) return; }
+      const nova: any = { id: Math.random().toString(36).slice(2), data: form.data, descricao: form.descricao.toUpperCase(), categoria: form.categoria, tipo: form.tipo, valor: Number(form.valor), status: form.status, data_vencimento: form.vencimento, observacao: form.observacao, itens: form.itens, impostos: form.impostos ? Number(form.impostos) : null };
+      setTransactions([nova, ...transactions]); setShowModal(false);
+      try { const r = await fetch('/api/transactions', { method: 'POST', body: JSON.stringify(nova) }); const j = await r.json(); if (j.duplicados?.length) alert(`Duplicado bloqueado no banco: ${j.duplicados[0].descricao}`); } catch(e){}
+    }
     setForm({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: "Saída", categoria: "Fornecedor", status: "a_pagar", observacao: "", itens: "", impostos: "" });
   }
 
-  async function marcarPago(id: string) {
-    setTransactions(transactions.map(t=> t.id===id ? {...t, status: 'pago' as any, data_pagamento: new Date().toISOString().slice(0,10)} as any : t));
-    try { await fetch('/api/transactions', { method: 'PATCH', body: JSON.stringify({ id, status: 'pago', data_pagamento: new Date().toISOString().slice(0,10) }) }); } catch(e){}
+  async function excluir(id: string) {
+    if (!confirm("Tem certeza que deseja excluir?")) return;
+    setTransactions(transactions.filter(t => t.id !== id));
+    try { await fetch(`/api/transactions?id=${id}`, { method: 'DELETE' }); } catch(e){}
+  }
+
+  function editar(t: any) {
+    setForm({ descricao: t.descricao, valor: String(t.valor), data: t.data.slice(0,10), vencimento: (t.data_vencimento||t.data).slice(0,10), tipo: t.tipo, categoria: t.categoria, status: t.status||'realizado', observacao: t.observacao||'', itens: t.itens||'', impostos: t.impostos ? String(t.impostos) : '' });
+    setEditingId(t.id);
+    setModalMode(t.tipo === 'Entrada' ? 'receita' : 'despesa');
+    setShowModal(true);
+  }
+
+  async function toggleStatus(t: any) {
+    const isPago = ['pago', 'realizado'].includes(t.status || 'realizado');
+    const newStatus = isPago ? (t.tipo==='Entrada' ? 'a_receber' : 'a_pagar') : (t.tipo==='Entrada' ? 'realizado' : 'pago');
+    setTransactions(transactions.map(tr=> tr.id===t.id ? {...tr, status: newStatus as any, data_pagamento: isPago ? null : new Date().toISOString().slice(0,10)} as any : tr));
+    try { await fetch('/api/transactions', { method: 'PATCH', body: JSON.stringify({ id: t.id, status: newStatus, data_pagamento: isPago ? null : new Date().toISOString().slice(0,10) }) }); } catch(e){}
   }
 
   function handleCsv(e: any) {
@@ -190,8 +213,8 @@ export default function Page() {
 
         {tab==='contas' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card className="p-6"><h3 className="font-bold mb-1 flex items-center gap-2"><span className="w-2 h-2 bg-red-500 rounded-full"></span>Contas a Pagar ({contas.aPagar.length}) - {BRL.format(totals.aPagar)}</h3><p className="text-[11px] text-zinc-500 mb-4">Despesas previstas e pendentes. Clique em PAGO pra dar baixa e evitar duplicidade.</p><div className="space-y-2 max-h-[500px] overflow-auto">{contas.aPagar.slice(0,20).map(t=><div key={t.id} className="flex justify-between items-center p-3 bg-zinc-50 rounded-xl"><div><div className="font-medium text-xs">{t.descricao}</div><div className="text-[11px] text-zinc-500">{(t as any).data_vencimento ? new Date((t as any).data_vencimento).toLocaleDateString('pt-BR') : new Date(t.data).toLocaleDateString('pt-BR')} • {(t as any).status}</div></div><div className="text-right"><div className="font-bold text-xs text-red-600">{BRL.format(Number(t.valor))}</div><button onClick={()=>marcarPago(t.id)} className="mt-1 text-[10px] bg-zinc-900 text-white px-2 py-1 rounded-lg hover:bg-black">Marcar PAGO</button></div></div>)}</div></Card>
-            <Card className="p-6"><h3 className="font-bold mb-1 flex items-center gap-2"><span className="w-2 h-2 bg-emerald-500 rounded-full"></span>Contas a Receber ({contas.aReceber.length}) - {BRL.format(totals.aReceber)}</h3><p className="text-[11px] text-zinc-500 mb-4">Receitas previstas. Dê baixa quando receber.</p><div className="space-y-2 max-h-[500px] overflow-auto">{contas.aReceber.slice(0,20).map(t=><div key={t.id} className="flex justify-between items-center p-3 bg-emerald-50 rounded-xl"><div><div className="font-medium text-xs">{t.descricao}</div><div className="text-[11px] text-zinc-500">{(t as any).data_vencimento ? new Date((t as any).data_vencimento).toLocaleDateString('pt-BR') : new Date(t.data).toLocaleDateString('pt-BR')} • {(t as any).status}</div></div><div className="text-right"><div className="font-bold text-xs text-emerald-700">{BRL.format(Number(t.valor))}</div><button onClick={()=>marcarPago(t.id)} className="mt-1 text-[10px] bg-emerald-600 text-white px-2 py-1 rounded-lg">Recebido</button></div></div>)}</div></Card>
+            <Card className="p-6"><h3 className="font-bold mb-1 flex items-center gap-2"><span className="w-2 h-2 bg-red-500 rounded-full"></span>Contas a Pagar ({contas.aPagar.length}) - {BRL.format(totals.aPagar)}</h3><p className="text-[11px] text-zinc-500 mb-4">Despesas previstas e pendentes. Clique em PAGO pra dar baixa e evitar duplicidade.</p><div className="space-y-2 max-h-[500px] overflow-auto">{contas.aPagar.slice(0,20).map(t=><div key={t.id} className="flex justify-between items-center p-3 bg-zinc-50 rounded-xl"><div><div className="font-medium text-xs">{t.descricao}</div><div className="text-[11px] text-zinc-500">{(t as any).data_vencimento ? new Date((t as any).data_vencimento).toLocaleDateString('pt-BR') : new Date(t.data).toLocaleDateString('pt-BR')} • {(t as any).status}</div></div><div className="text-right"><div className="font-bold text-xs text-red-600">{BRL.format(Number(t.valor))}</div><button onClick={()=>toggleStatus(t)} className="mt-1 text-[10px] bg-zinc-900 text-white px-2 py-1 rounded-lg hover:bg-black">Marcar PAGO</button></div></div>)}</div></Card>
+            <Card className="p-6"><h3 className="font-bold mb-1 flex items-center gap-2"><span className="w-2 h-2 bg-emerald-500 rounded-full"></span>Contas a Receber ({contas.aReceber.length}) - {BRL.format(totals.aReceber)}</h3><p className="text-[11px] text-zinc-500 mb-4">Receitas previstas. Dê baixa quando receber.</p><div className="space-y-2 max-h-[500px] overflow-auto">{contas.aReceber.slice(0,20).map(t=><div key={t.id} className="flex justify-between items-center p-3 bg-emerald-50 rounded-xl"><div><div className="font-medium text-xs">{t.descricao}</div><div className="text-[11px] text-zinc-500">{(t as any).data_vencimento ? new Date((t as any).data_vencimento).toLocaleDateString('pt-BR') : new Date(t.data).toLocaleDateString('pt-BR')} • {(t as any).status}</div></div><div className="text-right"><div className="font-bold text-xs text-emerald-700">{BRL.format(Number(t.valor))}</div><button onClick={()=>toggleStatus(t)} className="mt-1 text-[10px] bg-emerald-600 text-white px-2 py-1 rounded-lg">Recebido</button></div></div>)}</div></Card>
           </div>
         )}
 
@@ -203,7 +226,7 @@ export default function Page() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6"><Card className="p-6"><h3 className="font-bold mb-2">Exportar</h3><button onClick={exportCsv} className="w-full bg-zinc-900 text-white py-3 rounded-xl text-sm flex items-center justify-center gap-2"><Download className="w-4 h-4"/> Baixar CSV</button></Card><Card className="p-6"><h3 className="font-bold mb-2">Resumo</h3><div className="space-y-2 text-xs"><div className="flex justify-between"><span>Receita:</span><b>{BRL.format(totals.receitaBruta)}</b></div><div className="flex justify-between"><span>Despesas:</span><b>{BRL.format(totals.saidas)}</b></div><div className="flex justify-between border-t pt-2"><span>Resultado:</span><b>{BRL.format(totals.lucroLiquido)}</b></div></div><button onClick={()=>window.print()} className="w-full mt-4 border py-3 rounded-xl text-sm">Imprimir PDF</button></Card><Card className="p-6 bg-violet-600 text-white"><h3 className="font-bold mb-2">Saldo Futuro</h3><div className="text-2xl font-bold">{BRL.format(totals.saldo + totals.aReceber - totals.aPagar)}</div><div className="text-xs opacity-70">Realizado + A Receber - A Pagar</div></Card></div>
         )}
 
-        <Card className="mt-6"><div className="flex justify-between p-4"><h3 className="font-semibold">Todas Transações</h3><div className="relative"><Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar duplicado..." className="pl-9 pr-3 py-2 bg-zinc-50 border rounded-xl text-sm w-64"/></div></div><div className="overflow-x-auto px-4 pb-4"><table className="w-full text-sm"><thead><tr className="text-zinc-400 text-xs"><th className="text-left py-2">Venc.</th><th className="text-left py-2">Descrição</th><th className="text-left py-2">Status</th><th className="text-right py-2">Valor</th></tr></thead><tbody>{filtered.map(t=><tr key={t.id} className="border-t"><td className="py-3 text-xs">{(t as any).data_vencimento ? new Date((t as any).data_vencimento).toLocaleDateString('pt-BR') : new Date(t.data).toLocaleDateString('pt-BR')}</td><td className="py-3 font-medium text-xs">{t.descricao}</td><td className="py-3"><span className={`px-2 py-1 rounded-full text-[10px] ${(t as any).status==='a_pagar' ? 'bg-amber-100 text-amber-700' : (t as any).status==='a_receber' ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100'}`}>{(t as any).status||'realizado'}</span></td><td className="py-3 text-right font-bold text-xs">{BRL.format(Number(t.valor))}</td></tr>)}</tbody></table></div></Card>
+        <Card className="mt-6"><div className="flex justify-between p-4"><h3 className="font-semibold">Todas Transações</h3><div className="relative"><Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar duplicado..." className="pl-9 pr-3 py-2 bg-zinc-50 border rounded-xl text-sm w-64"/></div></div><div className="overflow-x-auto px-4 pb-4"><table className="w-full text-sm"><thead><tr className="text-zinc-400 text-xs"><th className="text-left py-2">Venc.</th><th className="text-left py-2">Descrição</th><th className="text-left py-2">Status</th><th className="text-right py-2">Valor</th><th className="text-right py-2 w-24">Ações</th></tr></thead><tbody>{filtered.map(t=><tr key={t.id} className="border-t hover:bg-zinc-50 group"><td className="py-3 text-xs">{(t as any).data_vencimento ? new Date((t as any).data_vencimento).toLocaleDateString('pt-BR') : new Date(t.data).toLocaleDateString('pt-BR')}</td><td className="py-3 font-medium text-xs">{t.descricao}</td><td className="py-3"><span className={`px-2 py-1 rounded-full text-[10px] ${(t as any).status==='a_pagar' ? 'bg-amber-100 text-amber-700' : (t as any).status==='a_receber' ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100'}`}>{(t as any).status||'realizado'}</span></td><td className="py-3 text-right font-bold text-xs">{BRL.format(Number(t.valor))}</td><td className="py-3 text-right text-zinc-400 flex justify-end gap-3 opacity-10 md:opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={()=>toggleStatus(t)} className="hover:text-emerald-600" title="Conciliar / Desconciliar">{['pago','realizado'].includes((t as any).status||'realizado') ? <Undo2 className="w-4 h-4"/> : <Check className="w-4 h-4"/>}</button><button onClick={()=>editar(t)} className="hover:text-violet-600" title="Editar"><Pencil className="w-4 h-4"/></button><button onClick={()=>excluir(t.id)} className="hover:text-red-600" title="Excluir"><Trash2 className="w-4 h-4"/></button></td></tr>)}</tbody></table></div></Card>
       </main>
 
       <button onClick={()=>setChatOpen(!chatOpen)} className="fixed bottom-6 right-6 bg-violet-600 text-white rounded-full w-14 h-14 flex items-center justify-center shadow-2xl z-30"><MessageCircle className="w-6 h-6"/></button>
