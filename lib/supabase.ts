@@ -19,6 +19,9 @@ export type Transaction = {
   observacao?: string;
   itens?: string;
   impostos?: number;
+  empresa?: string;
+  recorrente?: boolean;
+  comprovante_url?: string;
   created_at?: string;
 }
 

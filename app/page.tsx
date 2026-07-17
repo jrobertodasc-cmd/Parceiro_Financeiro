@@ -1,10 +1,10 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Transaction, supabase } from '@/lib/supabase';
 import { generateMockTransactions } from '@/lib/mock';
 import { classifyWithAI } from '@/lib/classify';
-import { TrendingUp, TrendingDown, BarChart3, Upload, Plus, Search, LogOut, Sparkles, Send, X, MessageCircle, Download, FileSpreadsheet, Calendar, AlertTriangle, Check, Clock, Pencil, Trash2, Undo2 } from 'lucide-react';
+import { Plus, Trash2, ArrowUpCircle, ArrowDownCircle, Search, Edit2, Pencil, Save, X, Calendar, Upload, BarChart3, Clock, Wallet, Settings, LogOut, Check, Undo2, PieChart, Activity, Layers, Target, BarChart, TrendingUp, Download, TrendingDown, MessageCircle, Sparkles, Send, AlertTriangle, FileSpreadsheet } from 'lucide-react';
 import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area, AreaChart } from 'recharts';
 import Papa from 'papaparse';
 import { CATEGORIAS } from '@/lib/categorias';
@@ -21,7 +21,7 @@ const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' 
 
 export default function Page() {
   const [logged, setLogged] = useState(false);
-  const [tab, setTab] = useState<'dash'|'dre'|'contas'|'reports'>('dash');
+  const [tab, setTab] = useState<'dash' | 'dre' | 'contas' | 'reports' | 'metas'>('dash');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<'receita'|'despesa'>('despesa');
@@ -46,7 +46,7 @@ export default function Page() {
   const [dupWarning, setDupWarning] = useState<string>("");
   const [editingId, setEditingId] = useState<string|null>(null);
 
-  useEffect(() => {
+  const fetchData = useCallback(() => {
     fetch('/api/transactions', { cache: 'no-store' })
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setTransactions(d); })
@@ -56,16 +56,26 @@ export default function Page() {
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setBudgets(d); })
       .catch(() => {});
-      
+  }, []);
+
+  useEffect(() => {
     if (supabase) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session) setLogged(true);
+      supabase.auth.getSession().then(({ data: { session } }: any) => {
+        if (session) {
+          setLogged(true);
+          fetchData();
+        }
       });
-      supabase.auth.onAuthStateChange((_event, session) => {
-        setLogged(!!session);
+      supabase.auth.onAuthStateChange((_event: any, session: any) => {
+        if (session) {
+          setLogged(true);
+          fetchData();
+        } else {
+          setLogged(false);
+        }
       });
     }
-  }, []);
+  }, [fetchData]);
 
   const filtered = useMemo(()=> transactions.filter(t => t.descricao.toLowerCase().includes(search.toLowerCase())).slice(0,50), [transactions, search]);
 
@@ -239,7 +249,7 @@ export default function Page() {
   }
 
   function editar(t: any) {
-    setForm({ descricao: t.descricao, valor: String(t.valor), data: t.data.slice(0,10), vencimento: (t.data_vencimento||t.data).slice(0,10), tipo: t.tipo, categoria: t.categoria, status: t.status||'realizado', observacao: t.observacao||'', itens: t.itens||'', impostos: t.impostos ? String(t.impostos) : '', empresa: t.empresa || 'BOAH MATRIZ', recorrente: t.recorrente || false });
+    setForm({ descricao: t.descricao, valor: String(t.valor), data: t.data.slice(0,10), vencimento: (t.data_vencimento||t.data).slice(0,10), tipo: t.tipo, categoria: t.categoria, status: t.status||'realizado', observacao: t.observacao||'', itens: t.itens||'', impostos: t.impostos ? String(t.impostos) : '', impostos_federais: '', empresa: t.empresa || 'BOAH MATRIZ', recorrente: t.recorrente || false });
     setEditingId(t.id);
     setModalMode(t.tipo === 'Entrada' ? 'receita' : 'despesa');
     setShowModal(true);
@@ -363,12 +373,18 @@ export default function Page() {
       </header>
 
       <main className="max-w-[1400px] mx-auto px-4 py-6">
-        <div className="flex gap-2 mb-6 overflow-x-auto">
-          <button onClick={()=>setTab('dash')} className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap ${tab==='dash' ? 'bg-white border shadow-sm text-zinc-900' : 'text-zinc-500'}`}>Dashboard</button>
-          <button onClick={()=>setTab('contas')} className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap flex items-center gap-2 ${tab==='contas' ? 'bg-white border shadow-sm text-zinc-900' : 'text-zinc-500'}`}><Clock className="w-4 h-4"/> Contas <span className="bg-amber-100 text-amber-700 text-[10px] px-1.5 py-0.5 rounded-full">{contas.aPagar.length+contas.aReceber.length} pendentes</span></button>
-          <button onClick={()=>setTab('dre')} className={`px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 whitespace-nowrap ${tab==='dre' ? 'bg-white border shadow-sm text-zinc-900' : 'text-zinc-500'}`}><BarChart3 className="w-4 h-4"/> DRE</button>
-          <button onClick={()=>setTab('metas')} className={`px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 whitespace-nowrap ${tab==='metas' ? 'bg-white border shadow-sm text-zinc-900' : 'text-zinc-500'}`}><TrendingUp className="w-4 h-4"/> Metas & Orçamentos</button>
-          <button onClick={()=>setTab('reports')} className={`px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 whitespace-nowrap ${tab==='reports' ? 'bg-white border shadow-sm text-zinc-900' : 'text-zinc-500'}`}><FileSpreadsheet className="w-4 h-4"/> Relatórios</button>
+        <div className="flex gap-2 p-2 bg-white rounded-xl shadow-sm overflow-x-auto w-full max-w-full mb-6">
+          {[
+            { id: 'dash', icon: PieChart, label: 'Dashboard' },
+            { id: 'dre', icon: Activity, label: 'DRE' },
+            { id: 'contas', icon: Layers, label: 'A Pagar / A Receber' },
+            { id: 'metas', icon: TrendingUp, label: 'Metas & Orçamentos' },
+            { id: 'reports', icon: BarChart, label: 'Relatórios' }
+          ].map(t => (
+            <button key={t.id} onClick={() => setTab(t.id as any)} className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-[11px] md:text-sm font-semibold transition ${tab === t.id ? 'bg-zinc-900 text-white' : 'hover:bg-zinc-100 text-zinc-500'}`}>
+              <t.icon className="w-4 h-4 hidden md:block" /> {t.label}
+            </button>
+          ))}
         </div>
 
         {tab==='dash' && (
