@@ -9,6 +9,14 @@ import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, C
 import Papa from 'papaparse';
 import { CATEGORIAS } from '@/lib/categorias';
 
+const generateUUID = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
+
 const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
 export default function Page() {
@@ -150,7 +158,7 @@ export default function Page() {
     let urlComprovante = null;
     if (comprovanteFile && supabase) {
       const ext = comprovanteFile.name.split('.').pop();
-      const { data, error } = await supabase.storage.from('comprovantes').upload(`${Date.now()}_${crypto.randomUUID()}.${ext}`, comprovanteFile);
+      const { data, error } = await supabase.storage.from('comprovantes').upload(`${Date.now()}_${generateUUID()}.${ext}`, comprovanteFile);
       if (data) urlComprovante = supabase.storage.from('comprovantes').getPublicUrl(data.path).data.publicUrl;
     }
     
@@ -173,16 +181,16 @@ export default function Page() {
         const fed = Number(form.impostos_federais || 0);
         const netValor = isSaida ? (Number(form.valor) - iss - fed) : Number(form.valor);
 
-        novas.push({ id: crypto.randomUUID(), data: novaData, descricao: form.descricao.toUpperCase() + (form.recorrente && i>0 ? ` (${i+1}/12)` : ''), categoria: form.categoria, tipo: form.tipo, valor: netValor, status: i===0 ? form.status : (form.tipo==='Entrada' ? 'a_receber' : 'a_pagar'), data_vencimento: novaData, observacao: form.observacao, itens: form.itens, impostos: form.impostos ? Number(form.impostos) : null, empresa: form.empresa, recorrente: form.recorrente, comprovante_url: urlComprovante });
+        novas.push({ id: generateUUID(), data: novaData, descricao: form.descricao.toUpperCase() + (form.recorrente && i>0 ? ` (${i+1}/12)` : ''), categoria: form.categoria, tipo: form.tipo, valor: netValor, status: i===0 ? form.status : (form.tipo==='Entrada' ? 'a_receber' : 'a_pagar'), data_vencimento: novaData, observacao: form.observacao, itens: form.itens, impostos: form.impostos ? Number(form.impostos) : null, empresa: form.empresa, recorrente: form.recorrente, comprovante_url: urlComprovante });
         
         if (form.tipo === 'Saída') {
           if (form.impostos && Number(form.impostos) > 0) {
             const vIss = getNextBusinessDay(novaData, 5);
-            novas.push({ id: crypto.randomUUID(), data: vIss, descricao: `GUIA DE IMPOSTO (ISS) REF. ${form.descricao.toUpperCase()}`, categoria: '12302 - Impostos - ISS', tipo: 'Saída', valor: Number(form.impostos), status: 'a_pagar', data_vencimento: vIss, empresa: form.empresa });
+            novas.push({ id: generateUUID(), data: vIss, descricao: `GUIA DE IMPOSTO (ISS) REF. ${form.descricao.toUpperCase()}`, categoria: '12302 - Impostos - ISS', tipo: 'Saída', valor: Number(form.impostos), status: 'a_pagar', data_vencimento: vIss, empresa: form.empresa });
           }
           if (form.impostos_federais && Number(form.impostos_federais) > 0) {
             const vFed = getNextBusinessDay(novaData, 20);
-            novas.push({ id: crypto.randomUUID(), data: vFed, descricao: `GUIA DE IMPOSTO (FEDERAL) REF. ${form.descricao.toUpperCase()}`, categoria: '12301 - Impostos - Simples Nacional/DAS', tipo: 'Saída', valor: Number(form.impostos_federais), status: 'a_pagar', data_vencimento: vFed, empresa: form.empresa });
+            novas.push({ id: generateUUID(), data: vFed, descricao: `GUIA DE IMPOSTO (FEDERAL) REF. ${form.descricao.toUpperCase()}`, categoria: '12301 - Impostos - Simples Nacional/DAS', tipo: 'Saída', valor: Number(form.impostos_federais), status: 'a_pagar', data_vencimento: vFed, empresa: form.empresa });
           }
         }
       }
@@ -262,7 +270,7 @@ export default function Page() {
             (match as any).data_pagamento = new Date().toISOString().slice(0,10);
             try { fetch('/api/transactions', { method: 'PATCH', body: JSON.stringify({ id: match.id, status: match.status, data_pagamento: (match as any).data_pagamento }) }); } catch(e){}
           } else {
-            novasParaInserir.push({ id: crypto.randomUUID(), data: date, descricao: memoMatch[1].trim().toUpperCase(), categoria: 'Outros', tipo, valor: valorAbs, status: 'realizado', data_vencimento: date, empresa: empresaFiltro !== 'TODAS' ? empresaFiltro : 'BOAH MATRIZ' });
+            novasParaInserir.push({ id: generateUUID(), data: date, descricao: memoMatch[1].trim().toUpperCase(), categoria: 'Outros', tipo, valor: valorAbs, status: 'realizado', data_vencimento: date, empresa: empresaFiltro !== 'TODAS' ? empresaFiltro : 'BOAH MATRIZ' });
           }
         }
       }
@@ -274,7 +282,7 @@ export default function Page() {
     
     Papa.parse(file, { header: true, complete: (res) => {
       const rows = res.data as any[];
-      const parsed: Transaction[] = rows.filter(r=>r.Data && r.Valor).map(r=>({ id: crypto.randomUUID(), data: r.Data.includes('/') ? r.Data.split('/').reverse().join('-') : r.Data, descricao: (r.Descrição||r.Descricao||"").toUpperCase(), categoria: classifyWithAI(r.Descrição||r.Descricao||""), tipo: Number(String(r.Valor).replace('R$','').replace('.','').replace(',','.')) >=0 ? "Entrada" : "Saída", valor: Math.abs(Number(String(r.Valor).replace('R$','').replace('.','').replace(',','.')))||0, status: 'realizado', empresa: empresaFiltro !== 'TODAS' ? empresaFiltro : 'BOAH MATRIZ' } as any));
+      const parsed: Transaction[] = rows.filter(r=>r.Data && r.Valor).map(r=>({ id: generateUUID(), data: r.Data.includes('/') ? r.Data.split('/').reverse().join('-') : r.Data, descricao: (r.Descrição||r.Descricao||"").toUpperCase(), categoria: classifyWithAI(r.Descrição||r.Descricao||""), tipo: Number(String(r.Valor).replace('R$','').replace('.','').replace(',','.')) >=0 ? "Entrada" : "Saída", valor: Math.abs(Number(String(r.Valor).replace('R$','').replace('.','').replace(',','.')))||0, status: 'realizado', empresa: empresaFiltro !== 'TODAS' ? empresaFiltro : 'BOAH MATRIZ' } as any));
       setCsvPreview(parsed);
     }});
   }
