@@ -168,7 +168,12 @@ export default function Page() {
         vDate.setMonth(vDate.getMonth() + i);
         let novaData = vDate.toISOString().slice(0,10);
         
-        novas.push({ id: Math.random().toString(36).slice(2), data: novaData, descricao: form.descricao.toUpperCase() + (form.recorrente && i>0 ? ` (${i+1}/12)` : ''), categoria: form.categoria, tipo: form.tipo, valor: Number(form.valor), status: i===0 ? form.status : (form.tipo==='Entrada' ? 'a_receber' : 'a_pagar'), data_vencimento: novaData, observacao: form.observacao, itens: form.itens, impostos: form.impostos ? Number(form.impostos) : null, empresa: form.empresa, recorrente: form.recorrente, comprovante_url: urlComprovante });
+        const isSaida = form.tipo === 'Saída';
+        const iss = Number(form.impostos || 0);
+        const fed = Number(form.impostos_federais || 0);
+        const netValor = isSaida ? (Number(form.valor) - iss - fed) : Number(form.valor);
+
+        novas.push({ id: Math.random().toString(36).slice(2), data: novaData, descricao: form.descricao.toUpperCase() + (form.recorrente && i>0 ? ` (${i+1}/12)` : ''), categoria: form.categoria, tipo: form.tipo, valor: netValor, status: i===0 ? form.status : (form.tipo==='Entrada' ? 'a_receber' : 'a_pagar'), data_vencimento: novaData, observacao: form.observacao, itens: form.itens, impostos: form.impostos ? Number(form.impostos) : null, empresa: form.empresa, recorrente: form.recorrente, comprovante_url: urlComprovante });
         
         if (form.tipo === 'Saída') {
           if (form.impostos && Number(form.impostos) > 0) {
@@ -522,6 +527,16 @@ export default function Page() {
               <div><label className="text-[11px] text-zinc-500">ISS Retido (Dia 05)</label><input type="number" value={form.impostos} onChange={e=>setForm({...form, impostos: e.target.value})} placeholder="R$" className="w-full border rounded-xl p-3 text-sm"/></div>
               <div><label className="text-[11px] text-zinc-500">Imposto Federal (Dia 20)</label><input type="number" value={form.impostos_federais} onChange={e=>setForm({...form, impostos_federais: e.target.value})} placeholder="R$" className="w-full border rounded-xl p-3 text-sm"/></div>
             </div>
+
+            {modalMode === 'despesa' && form.valor && (Number(form.impostos || 0) > 0 || Number(form.impostos_federais || 0) > 0) && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0"/>
+                <div>
+                  <strong className="text-sm">Valor Líquido a Pagar (Fornecedor): {BRL.format(Number(form.valor) - Number(form.impostos || 0) - Number(form.impostos_federais || 0))}</strong><br/>
+                  <span className="opacity-80">Nota Bruta: {BRL.format(Number(form.valor))} | Desconto de Impostos: {BRL.format(Number(form.impostos || 0) + Number(form.impostos_federais || 0))}</span>
+                </div>
+              </div>
+            )}
 
             <div className="flex flex-col md:flex-row gap-3 items-center">
               <input value={form.observacao} onChange={e=>setForm({...form, observacao: e.target.value})} placeholder="Observação / Nº Boleto (opcional)" className="w-full md:flex-1 border rounded-xl p-3 text-sm"/>
