@@ -7,6 +7,7 @@ import { classifyWithAI } from '@/lib/classify';
 import { TrendingUp, TrendingDown, BarChart3, Upload, Plus, Search, LogOut, Sparkles, Send, X, MessageCircle, Download, FileSpreadsheet, Calendar, AlertTriangle, Check, Clock } from 'lucide-react';
 import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area, AreaChart } from 'recharts';
 import Papa from 'papaparse';
+import { CATEGORIAS } from '@/lib/categorias';
 
 const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -49,7 +50,14 @@ export default function Page() {
     const aPagar = contas.aPagar.reduce((s,t)=>s+Number(t.valor),0);
     const porCategoria = transactions.filter(t=>t.tipo==='Saída').reduce((acc: any, t)=>{ acc[t.categoria] = (acc[t.categoria]||0)+Number(t.valor); return acc; },{});
     const maiorVilao = Object.entries(porCategoria).sort((a:any,b:any)=>b[1]-a[1])[0];
-    const fixo = porCategoria['Fixo']||0; const variavel = porCategoria['Variável']||0; const fornecedor = porCategoria['Fornecedor']||0; const imposto = porCategoria['Imposto']||0;
+    let fixo = porCategoria['Fixo']||0; let variavel = porCategoria['Variável']||0; let fornecedor = porCategoria['Fornecedor']||0; let imposto = porCategoria['Imposto']||0;
+    Object.keys(porCategoria).forEach(cat => {
+      const val = porCategoria[cat];
+      if (cat.startsWith('11') || cat.startsWith('21')) fixo += val;
+      else if (cat.startsWith('3 -') || cat.startsWith('223')) imposto += val;
+      else if (cat.startsWith('121')) fornecedor += val;
+      else if (cat.startsWith('12') || cat.startsWith('22') || cat.startsWith('4 -') || cat.startsWith('5 -')) variavel += val;
+    });
     const lucroLiquido = entradas - saidas;
     return { entradas, saidas, saldo: entradasRealizadas - saidasRealizadas, lucroLiquido, receitaBruta: entradas, margem: entradas ? (lucroLiquido/entradas*100) : 0, maiorVilao: maiorVilao ? maiorVilao[0] : 'Fixo', porCategoria, fixo, variavel, fornecedor, imposto, aReceber, aPagar, lucroBruto: entradas-(fornecedor+variavel) };
   }, [transactions, contas]);
@@ -225,7 +233,7 @@ export default function Page() {
 
             <div className="grid grid-cols-2 gap-3">
               <div><label className="text-[11px] text-zinc-500">Vencimento</label><input type="date" value={form.vencimento} onChange={e=>setForm({...form, vencimento: e.target.value})} className="w-full border rounded-xl p-3 text-sm"/></div>
-              <div><label className="text-[11px] text-zinc-500">Categoria</label><select value={form.categoria} onChange={e=>setForm({...form, categoria: e.target.value})} className="w-full border rounded-xl p-3 text-sm"><option>Fixo</option><option>Variável</option><option>Venda</option><option>Fornecedor</option><option>Imposto</option><option>Outros</option></select></div>
+              <div><label className="text-[11px] text-zinc-500">Categoria</label><select value={form.categoria} onChange={e=>setForm({...form, categoria: e.target.value})} className="w-full border rounded-xl p-3 text-sm"><optgroup label="Gerais"><option>Fixo</option><option>Variável</option><option>Venda</option><option>Fornecedor</option><option>Imposto</option><option>Outros</option></optgroup><optgroup label="Plano de Contas">{CATEGORIAS.map(c=><option key={c} value={c}>{c}</option>)}</optgroup></select></div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
