@@ -23,6 +23,10 @@ export default function Page() {
   const [aiAnswer, setAiAnswer] = useState("Roberto, pergunte: 'o que está matando meu lucro?' ou 'quais contas vencem essa semana?'");
   const [aiLoading, setAiLoading] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [flowView, setFlowView] = useState<'diario'|'semanal'|'acumulado'>('diario');
   const [form, setForm] = useState({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: "Saída" as any, categoria: "Fornecedor" as any, status: "a_pagar" as any, observacao: "", itens: "", impostos: "", empresa: "BOAH MATRIZ", recorrente: false });
   const [comprovanteFile, setComprovanteFile] = useState<File|null>(null);
@@ -37,6 +41,15 @@ export default function Page() {
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setTransactions(d); })
       .catch(() => {});
+      
+    if (supabase) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session) setLogged(true);
+      });
+      supabase.auth.onAuthStateChange((_event, session) => {
+        setLogged(!!session);
+      });
+    }
   }, []);
 
   const filtered = useMemo(()=> transactions.filter(t => t.descricao.toLowerCase().includes(search.toLowerCase())).slice(0,50), [transactions, search]);
@@ -229,14 +242,30 @@ export default function Page() {
     try { const dre = { receitaBruta: totals.receitaBruta, lucroLiquido: totals.lucroLiquido, margem: totals.margem.toFixed(2), maiorVilao: totals.maiorVilao, porCategoria: totals.porCategoria, entradas: totals.entradas, saidas: totals.saidas, aPagar: totals.aPagar, aReceber: totals.aReceber }; const res = await fetch('/api/ask-ai', { method: 'POST', body: JSON.stringify({ question: aiQuestion, dre, transactions: transactions.slice(0,20) }) }); const j = await res.json(); setAiAnswer(j.answer); } catch(e){ setAiAnswer("Erro ao consultar IA."); } setAiLoading(false); setAiQuestion("");
   }
 
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setLoginError(""); setIsLoggingIn(true);
+    if (!supabase) { setLoginError("Supabase não configurado."); setIsLoggingIn(false); return; }
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) setLoginError("E-mail ou senha incorretos.");
+    setIsLoggingIn(false);
+  }
+
   if (!logged) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-zinc-50 p-4">
         <Card className="w-full max-w-sm text-center py-10 px-6">
           <div className="w-12 h-12 bg-violet-600 rounded-xl mx-auto flex items-center justify-center text-white font-bold mb-4">F</div>
           <h1 className="text-xl font-bold">Financeiro Parceiro</h1>
-          <p className="text-sm text-zinc-500 mt-1 mb-8">Dashboard de Guerra do Controller</p>
-          <button onClick={()=>setLogged(true)} className="w-full bg-zinc-900 text-white py-3 rounded-xl font-medium hover:bg-black transition">Entrar como Roberto</button>
+          <p className="text-sm text-zinc-500 mt-1 mb-8">Acesso Seguro</p>
+          <form onSubmit={handleLogin} className="flex flex-col gap-3">
+            <input type="email" placeholder="E-mail" required value={email} onChange={e=>setEmail(e.target.value)} className="w-full p-3 rounded-xl border bg-zinc-50 text-sm outline-none focus:border-violet-500"/>
+            <input type="password" placeholder="Senha" required value={password} onChange={e=>setPassword(e.target.value)} className="w-full p-3 rounded-xl border bg-zinc-50 text-sm outline-none focus:border-violet-500"/>
+            {loginError && <div className="text-red-500 text-xs font-medium text-left">{loginError}</div>}
+            <button type="submit" disabled={isLoggingIn} className="w-full bg-zinc-900 text-white py-3 rounded-xl font-medium hover:bg-black transition mt-2 disabled:opacity-50">
+              {isLoggingIn ? "Entrando..." : "Entrar no Sistema"}
+            </button>
+          </form>
         </Card>
       </div>
     );
@@ -257,7 +286,7 @@ export default function Page() {
             <button onClick={()=>{setModalMode('receita'); setForm({...form, tipo:'Entrada', status:'a_receber', categoria:'Venda'}); setShowModal(true)}} className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-medium hover:bg-emerald-700"><Plus className="w-3.5 h-3.5"/> Receita</button>
             <button onClick={()=>{setModalMode('despesa'); setForm({...form, tipo:'Saída', status:'a_pagar', categoria:'Fornecedor'}); setShowModal(true)}} className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-zinc-900 text-white rounded-xl text-xs font-medium hover:bg-black"><Plus className="w-3.5 h-3.5"/> Despesa</button>
             <button onClick={()=>setShowImport(true)} className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-white border rounded-xl text-xs font-medium"><Upload className="w-3.5 h-3.5"/> CSV/OFX</button>
-            <div className="w-8 h-8 rounded-full bg-violet-100 flex items-center justify-center text-violet-700 font-bold text-sm">R</div><button onClick={()=>setLogged(false)}><LogOut className="w-4 h-4"/></button>
+            <div className="w-8 h-8 rounded-full bg-violet-100 flex items-center justify-center text-violet-700 font-bold text-sm">R</div><button onClick={async ()=>{ if(supabase) await supabase.auth.signOut(); setLogged(false); }}><LogOut className="w-4 h-4"/></button>
           </div>
         </div>
       </header>
