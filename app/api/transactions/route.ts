@@ -40,3 +40,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export async function PATCH(request: Request) {
+  if (!supabase) {
+    return NextResponse.json({ error: 'Supabase client not configured' }, { status: 501 });
+  }
+
+  try {
+    const body = await request.json();
+    const { id, ...updates } = body;
+    
+    if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
+
+    const { data, error } = await supabase
+      .from('transactions')
+      .update(updates)
+      .eq('id', id)
+      .select();
+
+    if (error) throw error;
+
+    return NextResponse.json(data[0]);
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

@@ -13,7 +13,7 @@ const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' 
 export default function Page() {
   const [logged, setLogged] = useState(false);
   const [tab, setTab] = useState<'dash'|'dre'|'contas'|'reports'>('dash');
-  const [transactions, setTransactions] = useState<Transaction[]>(generateMockTransactions());
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<'receita'|'despesa'>('despesa');
   const [showImport, setShowImport] = useState(false);
