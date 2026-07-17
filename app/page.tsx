@@ -145,60 +145,68 @@ export default function Page() {
   }
 
   function getNextBusinessDay(dateStr: string, targetDay: number) {
+    if (!dateStr || !dateStr.includes('-')) return new Date().toISOString().slice(0,10);
     const [y, m] = dateStr.split('-');
-    let d = new Date(Number(y), Number(m), targetDay);
-    if (d.getDay() === 6) d.setDate(targetDay + 2);
+    let d = new Date(Number(y), Number(m)-1, targetDay);
+    while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
     if (d.getDay() === 0) d.setDate(targetDay + 1);
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   }
 
   async function handleAdd() {
-    if (!form.descricao || !form.valor) return alert("Preencha descrição e valor");
-    
-    let urlComprovante = null;
-    if (comprovanteFile && supabase) {
-      const ext = comprovanteFile.name.split('.').pop();
-      const { data, error } = await supabase.storage.from('comprovantes').upload(`${Date.now()}_${generateUUID()}.${ext}`, comprovanteFile);
-      if (data) urlComprovante = supabase.storage.from('comprovantes').getPublicUrl(data.path).data.publicUrl;
-    }
-    
-    if (editingId) {
-      const nova: any = { id: editingId, data: form.data, descricao: form.descricao.toUpperCase(), categoria: form.categoria, tipo: form.tipo, valor: Number(form.valor), status: form.status, data_vencimento: form.vencimento, observacao: form.observacao, itens: form.itens, impostos: form.impostos ? Number(form.impostos) : null, empresa: form.empresa, recorrente: form.recorrente };
-      setTransactions(transactions.map(t => t.id === editingId ? nova : t)); setShowModal(false); setEditingId(null);
-      try { await fetch('/api/transactions', { method: 'PATCH', body: JSON.stringify(nova) }); } catch(e){}
-    } else {
-      if (checkDuplicate(form.descricao, form.valor, form.vencimento)) { if (!confirm("Detectamos duplicado! Deseja salvar mesmo assim?")) return; }
+    try {
+      if (!form.descricao || !form.valor) return alert("Preencha descrição e valor");
+      if (!form.vencimento) return alert("Preencha a data de vencimento");
       
-      const novas: any[] = [];
-      const qty = form.recorrente ? 12 : 1;
-      for (let i=0; i<qty; i++) {
-        let vDate = new Date(form.vencimento);
-        vDate.setMonth(vDate.getMonth() + i);
-        let novaData = vDate.toISOString().slice(0,10);
+      let urlComprovante = null;
+      if (comprovanteFile && supabase) {
+        const ext = comprovanteFile.name.split('.').pop();
+        const { data, error } = await supabase.storage.from('comprovantes').upload(`${Date.now()}_${generateUUID()}.${ext}`, comprovanteFile);
+        if (data) urlComprovante = supabase.storage.from('comprovantes').getPublicUrl(data.path).data.publicUrl;
+      }
+      
+      if (editingId) {
+        const nova: any = { id: editingId, data: form.data || form.vencimento, descricao: form.descricao.toUpperCase(), categoria: form.categoria, tipo: form.tipo, valor: Number(form.valor), status: form.status, data_vencimento: form.vencimento, observacao: form.observacao, itens: form.itens, impostos: form.impostos ? Number(form.impostos) : null, empresa: form.empresa, recorrente: form.recorrente };
+        setTransactions(transactions.map(t => t.id === editingId ? nova : t)); setShowModal(false); setEditingId(null);
+        try { await fetch('/api/transactions', { method: 'PATCH', body: JSON.stringify(nova) }); } catch(e){}
+      } else {
+        if (checkDuplicate(form.descricao, form.valor, form.vencimento)) { if (!confirm("Detectamos duplicado! Deseja salvar mesmo assim?")) return; }
         
-        const isSaida = form.tipo === 'Saída';
-        const iss = Number(form.impostos || 0);
-        const fed = Number(form.impostos_federais || 0);
-        const netValor = isSaida ? (Number(form.valor) - iss - fed) : Number(form.valor);
+        const novas: any[] = [];
+        const qty = form.recorrente ? 12 : 1;
+        for (let i=0; i<qty; i++) {
+          let vDate = new Date(form.vencimento);
+          if (isNaN(vDate.getTime())) vDate = new Date();
+          vDate.setMonth(vDate.getMonth() + i);
+          let novaData = vDate.toISOString().slice(0,10);
+          
+          const isSaida = form.tipo === 'Saída';
+          const iss = Number(form.impostos || 0);
+          const fed = Number(form.impostos_federais || 0);
+          const netValor = isSaida ? (Number(form.valor) - iss - fed) : Number(form.valor);
 
-        novas.push({ id: generateUUID(), data: novaData, descricao: form.descricao.toUpperCase() + (form.recorrente && i>0 ? ` (${i+1}/12)` : ''), categoria: form.categoria, tipo: form.tipo, valor: netValor, status: i===0 ? form.status : (form.tipo==='Entrada' ? 'a_receber' : 'a_pagar'), data_vencimento: novaData, observacao: form.observacao, itens: form.itens, impostos: form.impostos ? Number(form.impostos) : null, empresa: form.empresa, recorrente: form.recorrente, comprovante_url: urlComprovante });
-        
-        if (form.tipo === 'Saída') {
-          if (form.impostos && Number(form.impostos) > 0) {
-            const vIss = getNextBusinessDay(novaData, 5);
-            novas.push({ id: generateUUID(), data: vIss, descricao: `GUIA DE IMPOSTO (ISS) REF. ${form.descricao.toUpperCase()}`, categoria: '12302 - Impostos - ISS', tipo: 'Saída', valor: Number(form.impostos), status: 'a_pagar', data_vencimento: vIss, empresa: form.empresa });
-          }
-          if (form.impostos_federais && Number(form.impostos_federais) > 0) {
-            const vFed = getNextBusinessDay(novaData, 20);
-            novas.push({ id: generateUUID(), data: vFed, descricao: `GUIA DE IMPOSTO (FEDERAL) REF. ${form.descricao.toUpperCase()}`, categoria: '12301 - Impostos - Simples Nacional/DAS', tipo: 'Saída', valor: Number(form.impostos_federais), status: 'a_pagar', data_vencimento: vFed, empresa: form.empresa });
+          novas.push({ id: generateUUID(), data: novaData, descricao: form.descricao.toUpperCase() + (form.recorrente && i>0 ? ` (${i+1}/12)` : ''), categoria: form.categoria, tipo: form.tipo, valor: netValor, status: i===0 ? form.status : (form.tipo==='Entrada' ? 'a_receber' : 'a_pagar'), data_vencimento: novaData, observacao: form.observacao, itens: form.itens, impostos: form.impostos ? Number(form.impostos) : null, empresa: form.empresa, recorrente: form.recorrente, comprovante_url: urlComprovante });
+          
+          if (form.tipo === 'Saída') {
+            if (form.impostos && Number(form.impostos) > 0) {
+              const vIss = getNextBusinessDay(novaData, 5);
+              novas.push({ id: generateUUID(), data: vIss, descricao: `GUIA DE IMPOSTO (ISS) REF. ${form.descricao.toUpperCase()}`, categoria: '12302 - Impostos - ISS', tipo: 'Saída', valor: Number(form.impostos), status: 'a_pagar', data_vencimento: vIss, empresa: form.empresa });
+            }
+            if (form.impostos_federais && Number(form.impostos_federais) > 0) {
+              const vFed = getNextBusinessDay(novaData, 20);
+              novas.push({ id: generateUUID(), data: vFed, descricao: `GUIA DE IMPOSTO (FEDERAL) REF. ${form.descricao.toUpperCase()}`, categoria: '12301 - Impostos - Simples Nacional/DAS', tipo: 'Saída', valor: Number(form.impostos_federais), status: 'a_pagar', data_vencimento: vFed, empresa: form.empresa });
+            }
           }
         }
-      }
 
-      setTransactions([...novas, ...transactions]); setShowModal(false);
-      try { await fetch('/api/transactions', { method: 'POST', body: JSON.stringify(novas) }); } catch(e){}
+        setTransactions([...novas, ...transactions]); setShowModal(false);
+        try { await fetch('/api/transactions', { method: 'POST', body: JSON.stringify(novas) }); } catch(e){}
+      }
+      setForm({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: modalMode==='receita' ? 'Entrada' : 'Saída', categoria: modalMode==='receita' ? 'Venda' : 'Fornecedor', status: modalMode==='receita' ? 'a_receber' : 'a_pagar', observacao: "", itens: "", impostos: "", impostos_federais: "", empresa: "BOAH MATRIZ", recorrente: false });
+    } catch (err: any) {
+      alert("Erro ao salvar: " + err.message);
+      console.error(err);
     }
-    setForm({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: modalMode==='receita' ? 'Entrada' : 'Saída', categoria: modalMode==='receita' ? 'Venda' : 'Fornecedor', status: modalMode==='receita' ? 'a_receber' : 'a_pagar', observacao: "", itens: "", impostos: "", impostos_federais: "", empresa: "BOAH MATRIZ", recorrente: false });
   }
 
   async function excluir(id: string) {
