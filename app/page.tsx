@@ -33,7 +33,10 @@ export default function Page() {
   const [editingId, setEditingId] = useState<string|null>(null);
 
   useEffect(() => {
-    fetch('/api/transactions').then(r=>r.json()).then(d=>{ if (Array.isArray(d) && d.length > 0) setTransactions(d); }).catch(()=>{});
+    fetch('/api/transactions', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setTransactions(d); })
+      .catch(() => {});
   }, []);
 
   const filtered = useMemo(()=> transactions.filter(t => t.descricao.toLowerCase().includes(search.toLowerCase())).slice(0,50), [transactions, search]);

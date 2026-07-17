@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   if (!supabase) {
     return NextResponse.json({ error: 'Supabase client not configured' }, { status: 501 });
