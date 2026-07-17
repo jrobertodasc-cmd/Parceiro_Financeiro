@@ -27,6 +27,8 @@ export default function Page() {
   const [password, setPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [budgets, setBudgets] = useState<any[]>([]);
+  const [budgetForm, setBudgetForm] = useState({ tipo: 'Despesa', referencia: '21701 - Comunicação/Mídia Digital - Despesas Operacionais/Fecebook/Email/Mailship/Agencia/Programas e apps', valor: '' });
   const [flowView, setFlowView] = useState<'diario'|'semanal'|'acumulado'>('diario');
   const [form, setForm] = useState({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: "Saída" as any, categoria: "Fornecedor" as any, status: "a_pagar" as any, observacao: "", itens: "", impostos: "", empresa: "BOAH MATRIZ", recorrente: false });
   const [comprovanteFile, setComprovanteFile] = useState<File|null>(null);
@@ -40,6 +42,11 @@ export default function Page() {
     fetch('/api/transactions', { cache: 'no-store' })
       .then(r => r.json())
       .then(d => { if (Array.isArray(d)) setTransactions(d); })
+      .catch(() => {});
+      
+    fetch('/api/budgets', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setBudgets(d); })
       .catch(() => {});
       
     if (supabase) {
@@ -163,8 +170,23 @@ export default function Page() {
 
   async function excluir(id: string) {
     if (!confirm("Tem certeza que deseja excluir?")) return;
-    setTransactions(transactions.filter(t => t.id !== id));
+    setTransactions([...transactions.filter(t=>t.id!==id)]);
     try { await fetch(`/api/transactions?id=${id}`, { method: 'DELETE' }); } catch(e){}
+  }
+
+  async function handleAddBudget() {
+    if (!budgetForm.valor || !budgetForm.referencia) return;
+    const n = { ...budgetForm, valor: Number(budgetForm.valor.replace(/\D/g, ""))/100, mes_ano: mesFiltro };
+    const res = await fetch('/api/budgets', { method: 'POST', body: JSON.stringify(n) });
+    const json = await res.json();
+    setBudgets([json, ...budgets]);
+    setBudgetForm({...budgetForm, valor: ''});
+  }
+
+  async function deleteBudget(id: string) {
+    if(!confirm('Excluir meta/orçamento?')) return;
+    setBudgets(budgets.filter(b=>b.id!==id));
+    try { await fetch(`/api/budgets?id=${id}`, { method: 'DELETE' }); } catch(e){}
   }
 
   function editar(t: any) {
@@ -296,6 +318,7 @@ export default function Page() {
           <button onClick={()=>setTab('dash')} className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap ${tab==='dash' ? 'bg-white border shadow-sm text-zinc-900' : 'text-zinc-500'}`}>Dashboard</button>
           <button onClick={()=>setTab('contas')} className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap flex items-center gap-2 ${tab==='contas' ? 'bg-white border shadow-sm text-zinc-900' : 'text-zinc-500'}`}><Clock className="w-4 h-4"/> Contas <span className="bg-amber-100 text-amber-700 text-[10px] px-1.5 py-0.5 rounded-full">{contas.aPagar.length+contas.aReceber.length} pendentes</span></button>
           <button onClick={()=>setTab('dre')} className={`px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 whitespace-nowrap ${tab==='dre' ? 'bg-white border shadow-sm text-zinc-900' : 'text-zinc-500'}`}><BarChart3 className="w-4 h-4"/> DRE</button>
+          <button onClick={()=>setTab('metas')} className={`px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 whitespace-nowrap ${tab==='metas' ? 'bg-white border shadow-sm text-zinc-900' : 'text-zinc-500'}`}><TrendingUp className="w-4 h-4"/> Metas & Orçamentos</button>
           <button onClick={()=>setTab('reports')} className={`px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 whitespace-nowrap ${tab==='reports' ? 'bg-white border shadow-sm text-zinc-900' : 'text-zinc-500'}`}><FileSpreadsheet className="w-4 h-4"/> Relatórios</button>
         </div>
 
@@ -346,7 +369,71 @@ export default function Page() {
         )}
 
         {tab==='reports' && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6"><Card className="p-6"><h3 className="font-bold mb-2">Exportar</h3><button onClick={exportCsv} className="w-full bg-zinc-900 text-white py-3 rounded-xl text-sm flex items-center justify-center gap-2"><Download className="w-4 h-4"/> Baixar CSV</button></Card><Card className="p-6"><h3 className="font-bold mb-2">Resumo</h3><div className="space-y-2 text-xs"><div className="flex justify-between"><span>Receita:</span><b>{BRL.format(totals.receitaBruta)}</b></div><div className="flex justify-between"><span>Despesas:</span><b>{BRL.format(totals.saidas)}</b></div><div className="flex justify-between border-t pt-2"><span>Resultado:</span><b>{BRL.format(totals.lucroLiquido)}</b></div></div><button onClick={()=>window.print()} className="w-full mt-4 border py-3 rounded-xl text-sm">Imprimir PDF</button></Card><Card className="p-6 bg-violet-600 text-white"><h3 className="font-bold mb-2">Saldo Futuro</h3><div className="text-2xl font-bold">{BRL.format(totals.saldo + totals.aReceber - totals.aPagar)}</div><div className="text-xs opacity-70">Realizado + A Receber - A Pagar</div></Card></div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6"><Card className="p-6"><h3 className="font-bold mb-2">Exportar</h3><button onClick={exportCsv} className="w-full bg-zinc-900 text-white py-3 rounded-xl text-sm flex items-center justify-center gap-2"><Download className="w-4 h-4"/> Baixar CSV</button></Card><Card className="p-6"><h3 className="font-bold mb-2">Resumo</h3><div className="space-y-2 text-xs"><div className="flex justify-between"><span>Receita:</span><b>{BRL.format(totals.receitaBruta)}</b></div><div className="flex justify-between"><span>Despesas:</span><b>{BRL.format(totals.saidas)}</b></div><div className="flex justify-between border-t pt-2"><span>Resultado:</span><b>{BRL.format(totals.lucroLiquido)}</b></div></div><button onClick={()=>window.print()} className="w-full mt-4 border py-3 rounded-xl text-sm">Imprimir PDF</button></Card><Card className="p-6 bg-violet-600 text-white"><h3 className="font-bold mb-2">Saldo Futuro</h3><div className="text-2xl font-bold">{BRL.format((totals.saldoHistoricoRealizado||0) + (totals.aReceber||0) - (totals.aPagar||0))}</div><div className="text-xs opacity-70">Realizado + A Receber - A Pagar</div></Card></div>
+        )}
+
+        {tab==='metas' && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <Card className="p-6 lg:col-span-1">
+              <h3 className="font-bold text-lg mb-4">Novo Orçamento/Meta</h3>
+              <div className="space-y-3">
+                <div className="flex bg-zinc-100 rounded-xl p-1">
+                  <button onClick={()=>setBudgetForm({...budgetForm, tipo:'Receita', referencia:'BOAH MATRIZ'})} className={`flex-1 py-2 text-xs rounded-lg font-medium ${budgetForm.tipo==='Receita' ? 'bg-white shadow-sm text-emerald-700' : 'text-zinc-500'}`}>Meta de Venda</button>
+                  <button onClick={()=>setBudgetForm({...budgetForm, tipo:'Despesa', referencia:'21701 - Comunicação/Mídia Digital - Despesas Operacionais/Fecebook/Email/Mailship/Agencia/Programas e apps'})} className={`flex-1 py-2 text-xs rounded-lg font-medium ${budgetForm.tipo==='Despesa' ? 'bg-white shadow-sm text-red-700' : 'text-zinc-500'}`}>Orçamento de Custo</button>
+                </div>
+                <div>
+                  <label className="text-[11px] text-zinc-500">{budgetForm.tipo==='Receita' ? 'Qual Loja?' : 'Qual Categoria/Centro de Custo?'}</label>
+                  <select value={budgetForm.referencia} onChange={e=>setBudgetForm({...budgetForm, referencia: e.target.value})} className="w-full border rounded-xl p-3 text-sm truncate">
+                    {budgetForm.tipo === 'Receita' ? <><option>BOAH MATRIZ</option><option>SDB</option><option>VILAS</option><option>PASEO</option><option>BARRA</option><option>SOLAR (ADM)</option></> : CATEGORIAS.map(c=><option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] text-zinc-500">Valor Projetado (R$)</label>
+                  <input type="text" value={budgetForm.valor ? Number(budgetForm.valor).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}) : ""} onChange={e=>{ let v = e.target.value.replace(/\D/g, ""); if(!v) { setBudgetForm({...budgetForm, valor: ""}); return; } setBudgetForm({...budgetForm, valor: (parseInt(v)/100).toString()}); }} placeholder="0,00" className="w-full border rounded-xl p-3 text-sm"/>
+                </div>
+                <button onClick={handleAddBudget} className="w-full bg-zinc-900 text-white py-3 rounded-xl text-sm font-bold hover:bg-black">Adicionar para {new Date(mesFiltro+'-02').toLocaleString('pt-BR',{month:'long'})}</button>
+              </div>
+            </Card>
+            <Card className="p-6 lg:col-span-2">
+              <h3 className="font-bold text-lg mb-1">Acompanhamento: {new Date(mesFiltro+'-02').toLocaleString('pt-BR',{month:'long', year:'numeric'})}</h3>
+              <p className="text-[11px] text-zinc-500 mb-4">Veja como as lojas estão performando e se os departamentos estão dentro do orçamento.</p>
+              <div className="space-y-4 max-h-[500px] overflow-auto">
+                {budgets.filter(b=>b.mes_ano === mesFiltro).length === 0 && <div className="text-center py-10 text-zinc-400 text-sm border-2 border-dashed rounded-xl">Nenhuma meta ou orçamento definido para este mês.</div>}
+                {budgets.filter(b=>b.mes_ano === mesFiltro).map(b => {
+                  let atual = 0;
+                  if (b.tipo === 'Receita') {
+                    atual = transactions.filter(t => t.tipo === 'Entrada' && t.empresa === b.referencia).reduce((acc, t) => acc + Number(t.valor), 0);
+                  } else {
+                    atual = transactions.filter(t => t.tipo === 'Saída' && t.categoria === b.referencia).reduce((acc, t) => acc + Number(t.valor), 0);
+                  }
+                  const pct = b.valor > 0 ? (atual / b.valor * 100) : 0;
+                  const isOver = pct > 100;
+                  return (
+                    <div key={b.id} className="p-4 border rounded-xl bg-zinc-50">
+                      <div className="flex justify-between mb-2">
+                        <div>
+                          <div className="text-xs font-bold flex items-center gap-2">{b.tipo === 'Receita' ? <TrendingUp className="w-4 h-4 text-emerald-600"/> : <TrendingDown className="w-4 h-4 text-red-600"/>} {b.referencia}</div>
+                          <div className="text-[10px] text-zinc-500 mt-1">{b.tipo === 'Receita' ? 'Meta de Vendas' : 'Orçamento Liberado'}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className={`font-bold text-sm ${b.tipo === 'Despesa' && isOver ? 'text-red-600' : ''}`}>{BRL.format(atual)} <span className="text-xs font-normal text-zinc-500">de {BRL.format(Number(b.valor))}</span></div>
+                          <button onClick={()=>deleteBudget(b.id)} className="text-[10px] text-red-500 hover:underline mt-1">Excluir</button>
+                        </div>
+                      </div>
+                      <div className="w-full h-3 bg-zinc-200 rounded-full overflow-hidden">
+                        <div className={`h-full ${b.tipo === 'Receita' ? (pct>=100 ? 'bg-emerald-500' : 'bg-emerald-300') : (isOver ? 'bg-red-500' : 'bg-violet-600')}`} style={{width: `${Math.min(pct, 100)}%`}}></div>
+                      </div>
+                      <div className="flex justify-between mt-1 text-[10px] font-bold">
+                        <span className={b.tipo === 'Despesa' && isOver ? 'text-red-600' : 'text-zinc-600'}>{pct.toFixed(1)}% {b.tipo === 'Receita' ? 'atingido' : 'utilizado'}</span>
+                        {b.tipo === 'Despesa' && <span className={isOver ? 'text-red-600' : 'text-emerald-600'}>{isOver ? `Estourou ${BRL.format(atual - Number(b.valor))}` : `Restam ${BRL.format(Number(b.valor) - atual)}`}</span>}
+                        {b.tipo === 'Receita' && <span className={pct >= 100 ? 'text-emerald-600' : 'text-amber-600'}>{pct >= 100 ? `Superou em ${BRL.format(atual - Number(b.valor))}` : `Faltam ${BRL.format(Number(b.valor) - atual)}`}</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          </div>
         )}
 
         <Card className="mt-6"><div className="flex justify-between p-4"><h3 className="font-semibold">Todas Transações</h3><div className="relative"><Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar duplicado..." className="pl-9 pr-3 py-2 bg-zinc-50 border rounded-xl text-sm w-64"/></div></div><div className="overflow-x-auto px-4 pb-4"><table className="w-full text-sm"><thead><tr className="text-zinc-400 text-xs"><th className="text-left py-2">Venc.</th><th className="text-left py-2">Descrição</th><th className="text-left py-2">Status</th><th className="text-right py-2">Valor</th><th className="text-right py-2 w-24">Ações</th></tr></thead><tbody>{filtered.map(t=><tr key={t.id} className="border-t hover:bg-zinc-50 group"><td className="py-3 text-xs">{(t as any).data_vencimento ? new Date((t as any).data_vencimento).toLocaleDateString('pt-BR') : new Date(t.data).toLocaleDateString('pt-BR')}</td><td className="py-3 font-medium text-xs">{t.descricao}</td><td className="py-3"><span className={`px-2 py-1 rounded-full text-[10px] ${(t as any).status==='a_pagar' ? 'bg-amber-100 text-amber-700' : (t as any).status==='a_receber' ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100'}`}>{(t as any).status||'realizado'}</span></td><td className="py-3 text-right font-bold text-xs">{BRL.format(Number(t.valor))}</td><td className="py-3 text-right text-zinc-400 flex justify-end gap-3 opacity-10 md:opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={()=>toggleStatus(t)} className="hover:text-emerald-600" title="Conciliar / Desconciliar">{['pago','realizado'].includes((t as any).status||'realizado') ? <Undo2 className="w-4 h-4"/> : <Check className="w-4 h-4"/>}</button><button onClick={()=>editar(t)} className="hover:text-violet-600" title="Editar"><Pencil className="w-4 h-4"/></button><button onClick={()=>excluir(t.id)} className="hover:text-red-600" title="Excluir"><Trash2 className="w-4 h-4"/></button></td></tr>)}</tbody></table></div></Card>
