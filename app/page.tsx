@@ -30,7 +30,7 @@ export default function Page() {
   const [budgets, setBudgets] = useState<any[]>([]);
   const [budgetForm, setBudgetForm] = useState({ tipo: 'Despesa', referencia: '21701 - Comunicação/Mídia Digital - Despesas Operacionais/Fecebook/Email/Mailship/Agencia/Programas e apps', valor: '' });
   const [flowView, setFlowView] = useState<'diario'|'semanal'|'acumulado'>('diario');
-  const [form, setForm] = useState({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: "Saída" as any, categoria: "Fornecedor" as any, status: "a_pagar" as any, observacao: "", itens: "", impostos: "", empresa: "BOAH MATRIZ", recorrente: false });
+  const [form, setForm] = useState({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: "Saída" as any, categoria: "Fornecedor" as any, status: "a_pagar" as any, observacao: "", itens: "", impostos: "", impostos_federais: "", empresa: "BOAH MATRIZ", recorrente: false });
   const [comprovanteFile, setComprovanteFile] = useState<File|null>(null);
   const [csvPreview, setCsvPreview] = useState<Transaction[]>([]);
   const [mesFiltro, setMesFiltro] = useState<string>(new Date().toISOString().slice(0,7));
@@ -97,8 +97,9 @@ export default function Page() {
     const endOfMonth = new Date(parseInt(year), parseInt(month), 0).toISOString().slice(0,10);
     const trHistorico = trGeral.filter(t => ((t as any).data_vencimento || t.data) <= endOfMonth);
     const saldoHistoricoRealizado = trHistorico.filter(t => ['pago','realizado'].includes((t as any).status || 'realizado')).reduce((acc, t) => acc + (t.tipo==='Entrada' ? Number(t.valor) : -Number(t.valor)), 0);
+    const impostosProvisao = trMes.filter(t => t.descricao.startsWith('GUIA DE IMPOSTO')).reduce((acc, t) => acc + Number(t.valor), 0);
     
-    return { entradas, saidas, saldoMes: entradasRealizadas - saidasRealizadas, saldoHistoricoRealizado, lucroLiquido, receitaBruta: entradas, margem: entradas ? (lucroLiquido/entradas*100) : 0, maiorVilao: maiorVilao ? maiorVilao[0] : 'Fixo', porCategoria, fixo, variavel, fornecedor, imposto, aReceber, aPagar, lucroBruto: entradas-(fornecedor+variavel) };
+    return { entradas, saidas, saldoMes: entradasRealizadas - saidasRealizadas, saldoHistoricoRealizado, impostosProvisao, lucroLiquido, receitaBruta: entradas, margem: entradas ? (lucroLiquido/entradas*100) : 0, maiorVilao: maiorVilao ? maiorVilao[0] : 'Fixo', porCategoria, fixo, variavel, fornecedor, imposto, aReceber, aPagar, lucroBruto: entradas-(fornecedor+variavel) };
   }, [contas, mesFiltro]);
 
   const chartData = useMemo(()=> {
@@ -135,6 +136,14 @@ export default function Page() {
     setDupWarning(""); return false;
   }
 
+  function getNextBusinessDay(dateStr: string, targetDay: number) {
+    const [y, m] = dateStr.split('-');
+    let d = new Date(Number(y), Number(m), targetDay);
+    if (d.getDay() === 6) d.setDate(targetDay + 2);
+    if (d.getDay() === 0) d.setDate(targetDay + 1);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+
   async function handleAdd() {
     if (!form.descricao || !form.valor) return alert("Preencha descrição e valor");
     
@@ -160,12 +169,23 @@ export default function Page() {
         let novaData = vDate.toISOString().slice(0,10);
         
         novas.push({ id: Math.random().toString(36).slice(2), data: novaData, descricao: form.descricao.toUpperCase() + (form.recorrente && i>0 ? ` (${i+1}/12)` : ''), categoria: form.categoria, tipo: form.tipo, valor: Number(form.valor), status: i===0 ? form.status : (form.tipo==='Entrada' ? 'a_receber' : 'a_pagar'), data_vencimento: novaData, observacao: form.observacao, itens: form.itens, impostos: form.impostos ? Number(form.impostos) : null, empresa: form.empresa, recorrente: form.recorrente, comprovante_url: urlComprovante });
+        
+        if (form.tipo === 'Saída') {
+          if (form.impostos && Number(form.impostos) > 0) {
+            const vIss = getNextBusinessDay(novaData, 5);
+            novas.push({ id: Math.random().toString(36).slice(2), data: vIss, descricao: `GUIA DE IMPOSTO (ISS) REF. ${form.descricao.toUpperCase()}`, categoria: '12302 - Impostos - ISS', tipo: 'Saída', valor: Number(form.impostos), status: 'a_pagar', data_vencimento: vIss, empresa: form.empresa });
+          }
+          if (form.impostos_federais && Number(form.impostos_federais) > 0) {
+            const vFed = getNextBusinessDay(novaData, 20);
+            novas.push({ id: Math.random().toString(36).slice(2), data: vFed, descricao: `GUIA DE IMPOSTO (FEDERAL) REF. ${form.descricao.toUpperCase()}`, categoria: '12301 - Impostos - Simples Nacional/DAS', tipo: 'Saída', valor: Number(form.impostos_federais), status: 'a_pagar', data_vencimento: vFed, empresa: form.empresa });
+          }
+        }
       }
 
       setTransactions([...novas, ...transactions]); setShowModal(false);
-      try { const r = await fetch('/api/transactions', { method: 'POST', body: JSON.stringify(novas) }); const j = await r.json(); if (j.duplicados?.length) alert(`Duplicado bloqueado no banco: ${j.duplicados[0].descricao}`); } catch(e){}
+      try { await fetch('/api/transactions', { method: 'POST', body: JSON.stringify(novas) }); } catch(e){}
     }
-    setForm({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: "Saída", categoria: "Fornecedor", status: "a_pagar", observacao: "", itens: "", impostos: "", empresa: "BOAH MATRIZ", recorrente: false });
+    setForm({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: modalMode==='receita' ? 'Entrada' : 'Saída', categoria: modalMode==='receita' ? 'Venda' : 'Fornecedor', status: modalMode==='receita' ? 'a_receber' : 'a_pagar', observacao: "", itens: "", impostos: "", impostos_federais: "", empresa: "BOAH MATRIZ", recorrente: false });
   }
 
   async function excluir(id: string) {
@@ -369,7 +389,12 @@ export default function Page() {
         )}
 
         {tab==='reports' && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6"><Card className="p-6"><h3 className="font-bold mb-2">Exportar</h3><button onClick={exportCsv} className="w-full bg-zinc-900 text-white py-3 rounded-xl text-sm flex items-center justify-center gap-2"><Download className="w-4 h-4"/> Baixar CSV</button></Card><Card className="p-6"><h3 className="font-bold mb-2">Resumo</h3><div className="space-y-2 text-xs"><div className="flex justify-between"><span>Receita:</span><b>{BRL.format(totals.receitaBruta)}</b></div><div className="flex justify-between"><span>Despesas:</span><b>{BRL.format(totals.saidas)}</b></div><div className="flex justify-between border-t pt-2"><span>Resultado:</span><b>{BRL.format(totals.lucroLiquido)}</b></div></div><button onClick={()=>window.print()} className="w-full mt-4 border py-3 rounded-xl text-sm">Imprimir PDF</button></Card><Card className="p-6 bg-violet-600 text-white"><h3 className="font-bold mb-2">Saldo Futuro</h3><div className="text-2xl font-bold">{BRL.format((totals.saldoHistoricoRealizado||0) + (totals.aReceber||0) - (totals.aPagar||0))}</div><div className="text-xs opacity-70">Realizado + A Receber - A Pagar</div></Card></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <Card className="p-6"><h3 className="font-bold mb-2">Exportar</h3><button onClick={exportCsv} className="w-full bg-zinc-900 text-white py-3 rounded-xl text-sm flex items-center justify-center gap-2"><Download className="w-4 h-4"/> Baixar CSV</button></Card>
+            <Card className="p-6"><h3 className="font-bold mb-2">Resumo</h3><div className="space-y-2 text-xs"><div className="flex justify-between"><span>Receita:</span><b>{BRL.format(totals.receitaBruta)}</b></div><div className="flex justify-between"><span>Despesas:</span><b>{BRL.format(totals.saidas)}</b></div><div className="flex justify-between border-t pt-2"><span>Resultado:</span><b>{BRL.format(totals.lucroLiquido)}</b></div></div><button onClick={()=>window.print()} className="w-full mt-4 border py-3 rounded-xl text-sm">Imprimir PDF</button></Card>
+            <Card className="p-6 border-amber-200 bg-amber-50 text-amber-900"><h3 className="font-bold mb-2 text-amber-900">Provisão Impostos (Guias)</h3><div className="text-2xl font-bold">{BRL.format(totals.impostosProvisao)}</div><div className="text-xs opacity-80 mt-1">Soma de todas as Guias de Impostos Retidos geradas neste mês</div></Card>
+            <Card className="p-6 bg-violet-600 text-white"><h3 className="font-bold mb-2">Saldo Futuro</h3><div className="text-2xl font-bold">{BRL.format((totals.saldoHistoricoRealizado||0) + (totals.aReceber||0) - (totals.aPagar||0))}</div><div className="text-xs opacity-70">Realizado + A Receber - A Pagar</div></Card>
+          </div>
         )}
 
         {tab==='metas' && (
@@ -492,9 +517,10 @@ export default function Page() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div><label className="text-[11px] text-zinc-500">Peças / Itens (Opcional)</label><input value={form.itens} onChange={e=>setForm({...form, itens: e.target.value})} placeholder="Ex: 50 Camisetas" className="w-full border rounded-xl p-3 text-sm"/></div>
-              <div><label className="text-[11px] text-zinc-500">Impostos (Opcional)</label><input type="number" value={form.impostos} onChange={e=>setForm({...form, impostos: e.target.value})} placeholder="R$" className="w-full border rounded-xl p-3 text-sm"/></div>
+              <div><label className="text-[11px] text-zinc-500">ISS Retido (Dia 05)</label><input type="number" value={form.impostos} onChange={e=>setForm({...form, impostos: e.target.value})} placeholder="R$" className="w-full border rounded-xl p-3 text-sm"/></div>
+              <div><label className="text-[11px] text-zinc-500">Imposto Federal (Dia 20)</label><input type="number" value={form.impostos_federais} onChange={e=>setForm({...form, impostos_federais: e.target.value})} placeholder="R$" className="w-full border rounded-xl p-3 text-sm"/></div>
             </div>
 
             <div className="flex flex-col md:flex-row gap-3 items-center">
