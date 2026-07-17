@@ -17,6 +17,8 @@ export type Transaction = {
   data_pagamento?: string;
   hash_dedup?: string;
   observacao?: string;
+  itens?: string;
+  impostos?: number;
   created_at?: string;
 }
 

@@ -23,7 +23,7 @@ export default function Page() {
   const [aiLoading, setAiLoading] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [flowView, setFlowView] = useState<'diario'|'semanal'|'acumulado'>('diario');
-  const [form, setForm] = useState({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: "Saída" as any, categoria: "Fornecedor" as any, status: "a_pagar" as any, observacao: "" });
+  const [form, setForm] = useState({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: "Saída" as any, categoria: "Fornecedor" as any, status: "a_pagar" as any, observacao: "", itens: "", impostos: "" });
   const [csvPreview, setCsvPreview] = useState<Transaction[]>([]);
   const [dupWarning, setDupWarning] = useState<string>("");
 
@@ -80,10 +80,10 @@ export default function Page() {
   async function handleAdd() {
     if (!form.descricao || !form.valor) return alert("Preencha descrição e valor");
     if (checkDuplicate(form.descricao, form.valor, form.vencimento)) { if (!confirm("Detectamos duplicado! Deseja salvar mesmo assim?")) return; }
-    const nova: any = { id: Math.random().toString(36).slice(2), data: form.data, descricao: form.descricao.toUpperCase(), categoria: form.categoria, tipo: form.tipo, valor: Number(form.valor), status: form.status, data_vencimento: form.vencimento, observacao: form.observacao };
+    const nova: any = { id: Math.random().toString(36).slice(2), data: form.data, descricao: form.descricao.toUpperCase(), categoria: form.categoria, tipo: form.tipo, valor: Number(form.valor), status: form.status, data_vencimento: form.vencimento, observacao: form.observacao, itens: form.itens, impostos: form.impostos ? Number(form.impostos) : null };
     setTransactions([nova, ...transactions]); setShowModal(false);
     try { const r = await fetch('/api/transactions', { method: 'POST', body: JSON.stringify(nova) }); const j = await r.json(); if (j.duplicados?.length) alert(`Duplicado bloqueado no banco: ${j.duplicados[0].descricao}`); } catch(e){}
-    setForm({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: "Saída", categoria: "Fornecedor", status: "a_pagar", observacao: "" });
+    setForm({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: "Saída", categoria: "Fornecedor", status: "a_pagar", observacao: "", itens: "", impostos: "" });
   }
 
   async function marcarPago(id: string) {
@@ -226,6 +226,11 @@ export default function Page() {
             <div className="grid grid-cols-2 gap-3">
               <div><label className="text-[11px] text-zinc-500">Vencimento</label><input type="date" value={form.vencimento} onChange={e=>setForm({...form, vencimento: e.target.value})} className="w-full border rounded-xl p-3 text-sm"/></div>
               <div><label className="text-[11px] text-zinc-500">Categoria</label><select value={form.categoria} onChange={e=>setForm({...form, categoria: e.target.value})} className="w-full border rounded-xl p-3 text-sm"><option>Fixo</option><option>Variável</option><option>Venda</option><option>Fornecedor</option><option>Imposto</option><option>Outros</option></select></div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <input value={form.itens} onChange={e=>setForm({...form, itens: e.target.value})} placeholder="Peças / Itens (opcional)" className="border rounded-xl p-3 text-sm"/>
+              <input type="number" value={form.impostos} onChange={e=>setForm({...form, impostos: e.target.value})} placeholder="Impostos R$ (opcional)" className="border rounded-xl p-3 text-sm"/>
             </div>
 
             <input value={form.observacao} onChange={e=>setForm({...form, observacao: e.target.value})} placeholder="Observação / Nº Boleto (opcional)" className="w-full border rounded-xl p-3 text-sm"/>
