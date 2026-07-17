@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { Card } from '@/components/ui/card';
-import { Transaction } from '@/lib/supabase';
+import { Transaction, supabase } from '@/lib/supabase';
 import { generateMockTransactions } from '@/lib/mock';
 import { classifyWithAI } from '@/lib/classify';
 import { TrendingUp, TrendingDown, BarChart3, Upload, Plus, Search, LogOut, Sparkles, Send, X, MessageCircle, Download, FileSpreadsheet, Calendar, AlertTriangle, Check, Clock, Pencil, Trash2, Undo2 } from 'lucide-react';
@@ -24,8 +24,11 @@ export default function Page() {
   const [aiLoading, setAiLoading] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [flowView, setFlowView] = useState<'diario'|'semanal'|'acumulado'>('diario');
-  const [form, setForm] = useState({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: "Saída" as any, categoria: "Fornecedor" as any, status: "a_pagar" as any, observacao: "", itens: "", impostos: "" });
+  const [form, setForm] = useState({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: "Saída" as any, categoria: "Fornecedor" as any, status: "a_pagar" as any, observacao: "", itens: "", impostos: "", empresa: "BOAH MATRIZ", recorrente: false });
+  const [comprovanteFile, setComprovanteFile] = useState<File|null>(null);
   const [csvPreview, setCsvPreview] = useState<Transaction[]>([]);
+  const [mesFiltro, setMesFiltro] = useState<string>(new Date().toISOString().slice(0,7));
+  const [empresaFiltro, setEmpresaFiltro] = useState<string>('TODAS');
   const [dupWarning, setDupWarning] = useState<string>("");
   const [editingId, setEditingId] = useState<string|null>(null);
 
@@ -36,20 +39,26 @@ export default function Page() {
   const filtered = useMemo(()=> transactions.filter(t => t.descricao.toLowerCase().includes(search.toLowerCase())).slice(0,50), [transactions, search]);
 
   const contas = useMemo(()=>{
-    const aPagar = transactions.filter(t=> t.tipo==='Saída' && ['a_pagar','vencido','previsto'].includes((t as any).status || 'a_pagar'));
-    const aReceber = transactions.filter(t=> t.tipo==='Entrada' && ['a_receber','previsto'].includes((t as any).status || 'a_receber'));
-    const realizadas = transactions.filter(t=> ['realizado','pago'].includes((t as any).status || 'realizado'));
-    return { aPagar, aReceber, realizadas };
-  }, [transactions]);
+    let tr = transactions;
+    if (empresaFiltro !== 'TODAS') tr = tr.filter(t => (t as any).empresa === empresaFiltro);
+    
+    const trMes = tr.filter(t => (t.data || '').startsWith(mesFiltro) || ((t as any).data_vencimento || '').startsWith(mesFiltro));
+    
+    const aPagar = trMes.filter(t=> t.tipo==='Saída' && ['a_pagar','vencido','previsto'].includes((t as any).status || 'a_pagar'));
+    const aReceber = trMes.filter(t=> t.tipo==='Entrada' && ['a_receber','previsto'].includes((t as any).status || 'a_receber'));
+    const realizadas = trMes.filter(t=> ['realizado','pago'].includes((t as any).status || 'realizado'));
+    return { aPagar, aReceber, realizadas, trMes, trGeral: tr };
+  }, [transactions, mesFiltro, empresaFiltro]);
 
   const totals = useMemo(()=> {
-    const entradas = transactions.filter(t=>t.tipo==='Entrada').reduce((s,t)=>s+Number(t.valor),0);
-    const saidas = transactions.filter(t=>t.tipo==='Saída').reduce((s,t)=>s+Number(t.valor),0);
-    const entradasRealizadas = contas.realizadas.filter(t=>t.tipo==='Entrada').reduce((s,t)=>s+Number(t.valor),0);
-    const saidasRealizadas = contas.realizadas.filter(t=>t.tipo==='Saída').reduce((s,t)=>s+Number(t.valor),0);
-    const aReceber = contas.aReceber.reduce((s,t)=>s+Number(t.valor),0);
-    const aPagar = contas.aPagar.reduce((s,t)=>s+Number(t.valor),0);
-    const porCategoria = transactions.filter(t=>t.tipo==='Saída').reduce((acc: any, t)=>{ acc[t.categoria] = (acc[t.categoria]||0)+Number(t.valor); return acc; },{});
+    const { trMes, realizadas, aPagar: cAPagar, aReceber: cAReceber, trGeral } = contas;
+    const entradas = trMes.filter(t=>t.tipo==='Entrada').reduce((s,t)=>s+Number(t.valor),0);
+    const saidas = trMes.filter(t=>t.tipo==='Saída').reduce((s,t)=>s+Number(t.valor),0);
+    const entradasRealizadas = realizadas.filter(t=>t.tipo==='Entrada').reduce((s,t)=>s+Number(t.valor),0);
+    const saidasRealizadas = realizadas.filter(t=>t.tipo==='Saída').reduce((s,t)=>s+Number(t.valor),0);
+    const aReceber = cAReceber.reduce((s,t)=>s+Number(t.valor),0);
+    const aPagar = cAPagar.reduce((s,t)=>s+Number(t.valor),0);
+    const porCategoria = trMes.filter(t=>t.tipo==='Saída').reduce((acc: any, t)=>{ acc[t.categoria] = (acc[t.categoria]||0)+Number(t.valor); return acc; },{});
     const maiorVilao = Object.entries(porCategoria).sort((a:any,b:any)=>b[1]-a[1])[0];
     let fixo = porCategoria['Fixo']||0; let variavel = porCategoria['Variável']||0; let fornecedor = porCategoria['Fornecedor']||0; let imposto = porCategoria['Imposto']||0;
     Object.keys(porCategoria).forEach(cat => {
@@ -60,24 +69,41 @@ export default function Page() {
       else if (cat.startsWith('12') || cat.startsWith('22') || cat.startsWith('4 -') || cat.startsWith('5 -')) variavel += val;
     });
     const lucroLiquido = entradas - saidas;
-    return { entradas, saidas, saldo: entradasRealizadas - saidasRealizadas, lucroLiquido, receitaBruta: entradas, margem: entradas ? (lucroLiquido/entradas*100) : 0, maiorVilao: maiorVilao ? maiorVilao[0] : 'Fixo', porCategoria, fixo, variavel, fornecedor, imposto, aReceber, aPagar, lucroBruto: entradas-(fornecedor+variavel) };
-  }, [transactions, contas]);
+    
+    const [year, month] = mesFiltro.split('-');
+    const endOfMonth = new Date(parseInt(year), parseInt(month), 0).toISOString().slice(0,10);
+    const trHistorico = trGeral.filter(t => ((t as any).data_vencimento || t.data) <= endOfMonth);
+    const saldoHistoricoRealizado = trHistorico.filter(t => ['pago','realizado'].includes((t as any).status || 'realizado')).reduce((acc, t) => acc + (t.tipo==='Entrada' ? Number(t.valor) : -Number(t.valor)), 0);
+    
+    return { entradas, saidas, saldoMes: entradasRealizadas - saidasRealizadas, saldoHistoricoRealizado, lucroLiquido, receitaBruta: entradas, margem: entradas ? (lucroLiquido/entradas*100) : 0, maiorVilao: maiorVilao ? maiorVilao[0] : 'Fixo', porCategoria, fixo, variavel, fornecedor, imposto, aReceber, aPagar, lucroBruto: entradas-(fornecedor+variavel) };
+  }, [contas, mesFiltro]);
 
   const chartData = useMemo(()=> {
-    if (flowView === 'semanal') {
-      const map: Record<string, {entrada:number, saida:number}> = {};
-      transactions.forEach(t=>{
-        const d = new Date(t.data); const day = Math.floor((Date.now() - d.getTime())/86400000); const weekKey = `Sem ${Math.floor(day/7)+1}`;
-        if (!map[weekKey]) map[weekKey] = {entrada:0, saida:0};
-        if (t.tipo==='Entrada') map[weekKey].entrada += Number(t.valor); else map[weekKey].saida += Number(t.valor);
-      });
-      let acc=0; return Object.entries(map).slice(-8).map(([k,v])=>{ acc+=v.entrada-v.saida; return { date: k, entrada: v.entrada, saida: v.saida, saldo: acc }; });
-    }
+    const { trMes } = contas;
+    const [year, month] = mesFiltro.split('-');
+    const daysInMonth = new Date(parseInt(year), parseInt(month), 0).getDate();
+    
     const map: Record<string, {entrada:number, saida:number}> = {};
-    for (let i=29; i>=0; i--) { const d = new Date(); d.setDate(d.getDate()-i); const key = d.toISOString().slice(0,10); map[key] = { entrada:0, saida:0 }; }
-    transactions.forEach(t=>{ if (!map[t.data]) map[t.data] = {entrada:0, saida:0}; if (t.tipo==='Entrada') map[t.data].entrada += Number(t.valor); else map[t.data].saida += Number(t.valor); });
-    let acc=0; return Object.entries(map).map(([date, v])=>{ acc += v.entrada - v.saida; const d = new Date(date); return { date: `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`, entrada: v.entrada, saida: v.saida, saldo: acc }; });
-  }, [transactions, flowView]);
+    for (let i=1; i<=daysInMonth; i++) { 
+      const key = `${mesFiltro}-${String(i).padStart(2,'0')}`; 
+      map[key] = { entrada:0, saida:0 }; 
+    }
+    
+    trMes.forEach(t=>{ 
+      const dataKey = ((t as any).data_vencimento || t.data).slice(0,10);
+      if (map[dataKey]) {
+        if (t.tipo==='Entrada') map[dataKey].entrada += Number(t.valor); 
+        else map[dataKey].saida += Number(t.valor); 
+      }
+    });
+    
+    let acc=0; 
+    return Object.entries(map).map(([date, v])=>{ 
+      acc += v.entrada - v.saida; 
+      const [y,m,d] = date.split('-');
+      return { date: `${d}/${m}`, entrada: v.entrada, saida: v.saida, saldo: acc }; 
+    });
+  }, [contas, mesFiltro]);
 
   function checkDuplicate(descricao: string, valor: string, data: string) {
     const hash = `${descricao.trim().toLowerCase()}_${Number(valor).toFixed(2)}_${data}`;
@@ -89,17 +115,34 @@ export default function Page() {
   async function handleAdd() {
     if (!form.descricao || !form.valor) return alert("Preencha descrição e valor");
     
+    let urlComprovante = null;
+    if (comprovanteFile && supabase) {
+      const ext = comprovanteFile.name.split('.').pop();
+      const { data, error } = await supabase.storage.from('comprovantes').upload(`${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`, comprovanteFile);
+      if (data) urlComprovante = supabase.storage.from('comprovantes').getPublicUrl(data.path).data.publicUrl;
+    }
+    
     if (editingId) {
-      const nova: any = { id: editingId, data: form.data, descricao: form.descricao.toUpperCase(), categoria: form.categoria, tipo: form.tipo, valor: Number(form.valor), status: form.status, data_vencimento: form.vencimento, observacao: form.observacao, itens: form.itens, impostos: form.impostos ? Number(form.impostos) : null };
+      const nova: any = { id: editingId, data: form.data, descricao: form.descricao.toUpperCase(), categoria: form.categoria, tipo: form.tipo, valor: Number(form.valor), status: form.status, data_vencimento: form.vencimento, observacao: form.observacao, itens: form.itens, impostos: form.impostos ? Number(form.impostos) : null, empresa: form.empresa, recorrente: form.recorrente };
       setTransactions(transactions.map(t => t.id === editingId ? nova : t)); setShowModal(false); setEditingId(null);
       try { await fetch('/api/transactions', { method: 'PATCH', body: JSON.stringify(nova) }); } catch(e){}
     } else {
       if (checkDuplicate(form.descricao, form.valor, form.vencimento)) { if (!confirm("Detectamos duplicado! Deseja salvar mesmo assim?")) return; }
-      const nova: any = { id: Math.random().toString(36).slice(2), data: form.data, descricao: form.descricao.toUpperCase(), categoria: form.categoria, tipo: form.tipo, valor: Number(form.valor), status: form.status, data_vencimento: form.vencimento, observacao: form.observacao, itens: form.itens, impostos: form.impostos ? Number(form.impostos) : null };
-      setTransactions([nova, ...transactions]); setShowModal(false);
-      try { const r = await fetch('/api/transactions', { method: 'POST', body: JSON.stringify(nova) }); const j = await r.json(); if (j.duplicados?.length) alert(`Duplicado bloqueado no banco: ${j.duplicados[0].descricao}`); } catch(e){}
+      
+      const novas: any[] = [];
+      const qty = form.recorrente ? 12 : 1;
+      for (let i=0; i<qty; i++) {
+        let vDate = new Date(form.vencimento);
+        vDate.setMonth(vDate.getMonth() + i);
+        let novaData = vDate.toISOString().slice(0,10);
+        
+        novas.push({ id: Math.random().toString(36).slice(2), data: novaData, descricao: form.descricao.toUpperCase() + (form.recorrente && i>0 ? ` (${i+1}/12)` : ''), categoria: form.categoria, tipo: form.tipo, valor: Number(form.valor), status: i===0 ? form.status : (form.tipo==='Entrada' ? 'a_receber' : 'a_pagar'), data_vencimento: novaData, observacao: form.observacao, itens: form.itens, impostos: form.impostos ? Number(form.impostos) : null, empresa: form.empresa, recorrente: form.recorrente, comprovante_url: urlComprovante });
+      }
+
+      setTransactions([...novas, ...transactions]); setShowModal(false);
+      try { const r = await fetch('/api/transactions', { method: 'POST', body: JSON.stringify(novas) }); const j = await r.json(); if (j.duplicados?.length) alert(`Duplicado bloqueado no banco: ${j.duplicados[0].descricao}`); } catch(e){}
     }
-    setForm({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: "Saída", categoria: "Fornecedor", status: "a_pagar", observacao: "", itens: "", impostos: "" });
+    setForm({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: "Saída", categoria: "Fornecedor", status: "a_pagar", observacao: "", itens: "", impostos: "", empresa: "BOAH MATRIZ", recorrente: false });
   }
 
   async function excluir(id: string) {
@@ -109,7 +152,7 @@ export default function Page() {
   }
 
   function editar(t: any) {
-    setForm({ descricao: t.descricao, valor: String(t.valor), data: t.data.slice(0,10), vencimento: (t.data_vencimento||t.data).slice(0,10), tipo: t.tipo, categoria: t.categoria, status: t.status||'realizado', observacao: t.observacao||'', itens: t.itens||'', impostos: t.impostos ? String(t.impostos) : '' });
+    setForm({ descricao: t.descricao, valor: String(t.valor), data: t.data.slice(0,10), vencimento: (t.data_vencimento||t.data).slice(0,10), tipo: t.tipo, categoria: t.categoria, status: t.status||'realizado', observacao: t.observacao||'', itens: t.itens||'', impostos: t.impostos ? String(t.impostos) : '', empresa: t.empresa || 'BOAH MATRIZ', recorrente: t.recorrente || false });
     setEditingId(t.id);
     setModalMode(t.tipo === 'Entrada' ? 'receita' : 'despesa');
     setShowModal(true);
@@ -122,11 +165,53 @@ export default function Page() {
     try { await fetch('/api/transactions', { method: 'PATCH', body: JSON.stringify({ id: t.id, status: newStatus, data_pagamento: isPago ? null : new Date().toISOString().slice(0,10) }) }); } catch(e){}
   }
 
-  function handleCsv(e: any) {
+  async function handleFileUpload(e: any) {
     const file = e.target.files?.[0]; if (!file) return;
+    const isOfx = file.name.toLowerCase().endsWith('.ofx');
+    
+    if (isOfx) {
+      const text = await file.text();
+      const novasParaInserir = [];
+      const idsParaBaixar = [];
+      let trUpdates = [...transactions];
+      
+      const blocks = text.split(/<STMTTRN>/i).slice(1);
+      for (const b of blocks) {
+        const amtMatch = b.match(/<TRNAMT>([^<]+)/i);
+        const dtMatch = b.match(/<DTPOSTED>([^<]+)/i);
+        const memoMatch = b.match(/<MEMO>([^<]+)/i);
+        if (amtMatch && dtMatch && memoMatch) {
+          const val = Number(amtMatch[1]);
+          const dt = dtMatch[1].slice(0,8);
+          const date = `${dt.slice(0,4)}-${dt.slice(4,6)}-${dt.slice(6,8)}`;
+          const tipo = val >= 0 ? 'Entrada' : 'Saída';
+          const valorAbs = Math.abs(val);
+          
+          const match = trUpdates.find(t => 
+            Number(t.valor) === valorAbs && t.tipo === tipo && 
+            ['a_pagar', 'a_receber'].includes((t as any).status) &&
+            Math.abs(new Date((t as any).data_vencimento || t.data).getTime() - new Date(date).getTime()) <= (3 * 86400000)
+          );
+          
+          if (match) {
+            idsParaBaixar.push(match.id);
+            match.status = match.tipo === 'Entrada' ? 'realizado' : 'pago';
+            (match as any).data_pagamento = new Date().toISOString().slice(0,10);
+            try { fetch('/api/transactions', { method: 'PATCH', body: JSON.stringify({ id: match.id, status: match.status, data_pagamento: (match as any).data_pagamento }) }); } catch(e){}
+          } else {
+            novasParaInserir.push({ id: Math.random().toString(36).slice(2), data: date, descricao: memoMatch[1].trim().toUpperCase(), categoria: 'Outros', tipo, valor: valorAbs, status: 'realizado', data_vencimento: date, empresa: empresaFiltro !== 'TODAS' ? empresaFiltro : 'BOAH MATRIZ' });
+          }
+        }
+      }
+      if (idsParaBaixar.length) setTransactions(trUpdates);
+      if (novasParaInserir.length) setCsvPreview(novasParaInserir as any);
+      alert(`OFX LIDO: ${idsParaBaixar.length} contas bateram e foram baixadas automaticamente! ${novasParaInserir.length} novos lançamentos do banco.`);
+      return;
+    }
+    
     Papa.parse(file, { header: true, complete: (res) => {
       const rows = res.data as any[];
-      const parsed: Transaction[] = rows.filter(r=>r.Data && r.Valor).map(r=>({ id: Math.random().toString(36).slice(2), data: r.Data.includes('/') ? r.Data.split('/').reverse().join('-') : r.Data, descricao: (r.Descrição||r.Descricao||"").toUpperCase(), categoria: classifyWithAI(r.Descrição||r.Descricao||""), tipo: Number(String(r.Valor).replace('R$','').replace('.','').replace(',','.')) >=0 ? "Entrada" : "Saída", valor: Math.abs(Number(String(r.Valor).replace('R$','').replace('.','').replace(',','.')))||0, status: 'realizado' } as any));
+      const parsed: Transaction[] = rows.filter(r=>r.Data && r.Valor).map(r=>({ id: Math.random().toString(36).slice(2), data: r.Data.includes('/') ? r.Data.split('/').reverse().join('-') : r.Data, descricao: (r.Descrição||r.Descricao||"").toUpperCase(), categoria: classifyWithAI(r.Descrição||r.Descricao||""), tipo: Number(String(r.Valor).replace('R$','').replace('.','').replace(',','.')) >=0 ? "Entrada" : "Saída", valor: Math.abs(Number(String(r.Valor).replace('R$','').replace('.','').replace(',','.')))||0, status: 'realizado', empresa: empresaFiltro !== 'TODAS' ? empresaFiltro : 'BOAH MATRIZ' } as any));
       setCsvPreview(parsed);
     }});
   }
@@ -159,10 +244,16 @@ export default function Page() {
       <header className="sticky top-0 z-20 bg-white/80 backdrop-blur border-b border-zinc-100">
         <div className="max-w-[1400px] mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3"><div className="w-8 h-8 bg-violet-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">F</div><span className="font-bold">Financeiro Parceiro</span><span className="text-xs bg-emerald-50 text-emerald-700 px-2 py-1 rounded-full">{transactions.length} transações</span></div>
+          <div className="flex flex-1 max-w-xl mx-auto md:mx-4 items-center gap-2">
+            <input type="month" value={mesFiltro} onChange={e=>setMesFiltro(e.target.value)} className="bg-zinc-100 border-none rounded-xl px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-violet-600" />
+            <select value={empresaFiltro} onChange={e=>setEmpresaFiltro(e.target.value)} className="bg-zinc-100 border-none rounded-xl px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-violet-600 flex-1">
+              <option value="TODAS">Todas as Lojas</option><option>BOAH MATRIZ</option><option>SDB</option><option>VILAS</option><option>PASEO</option><option>BARRA</option><option>SOLAR (ADM)</option>
+            </select>
+          </div>
           <div className="flex items-center gap-2">
             <button onClick={()=>{setModalMode('receita'); setForm({...form, tipo:'Entrada', status:'a_receber', categoria:'Venda'}); setShowModal(true)}} className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-medium hover:bg-emerald-700"><Plus className="w-3.5 h-3.5"/> Receita</button>
             <button onClick={()=>{setModalMode('despesa'); setForm({...form, tipo:'Saída', status:'a_pagar', categoria:'Fornecedor'}); setShowModal(true)}} className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-zinc-900 text-white rounded-xl text-xs font-medium hover:bg-black"><Plus className="w-3.5 h-3.5"/> Despesa</button>
-            <button onClick={()=>setShowImport(true)} className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-white border rounded-xl text-xs font-medium"><Upload className="w-3.5 h-3.5"/> Importar</button>
+            <button onClick={()=>setShowImport(true)} className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-white border rounded-xl text-xs font-medium"><Upload className="w-3.5 h-3.5"/> CSV/OFX</button>
             <div className="w-8 h-8 rounded-full bg-violet-100 flex items-center justify-center text-violet-700 font-bold text-sm">R</div><button onClick={()=>setLogged(false)}><LogOut className="w-4 h-4"/></button>
           </div>
         </div>
@@ -213,7 +304,7 @@ export default function Page() {
 
         {tab==='contas' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card className="p-6"><h3 className="font-bold mb-1 flex items-center gap-2"><span className="w-2 h-2 bg-red-500 rounded-full"></span>Contas a Pagar ({contas.aPagar.length}) - {BRL.format(totals.aPagar)}</h3><p className="text-[11px] text-zinc-500 mb-4">Despesas previstas e pendentes. Clique em PAGO pra dar baixa e evitar duplicidade.</p><div className="space-y-2 max-h-[500px] overflow-auto">{contas.aPagar.slice(0,20).map(t=><div key={t.id} className="flex justify-between items-center p-3 bg-zinc-50 rounded-xl"><div><div className="font-medium text-xs">{t.descricao}</div><div className="text-[11px] text-zinc-500">{(t as any).data_vencimento ? new Date((t as any).data_vencimento).toLocaleDateString('pt-BR') : new Date(t.data).toLocaleDateString('pt-BR')} • {(t as any).status}</div></div><div className="text-right"><div className="font-bold text-xs text-red-600">{BRL.format(Number(t.valor))}</div><button onClick={()=>toggleStatus(t)} className="mt-1 text-[10px] bg-zinc-900 text-white px-2 py-1 rounded-lg hover:bg-black">Marcar PAGO</button></div></div>)}</div></Card>
+            <Card className="p-6"><h3 className="font-bold mb-1 flex items-center gap-2"><span className="w-2 h-2 bg-red-500 rounded-full"></span>Contas a Pagar ({contas.aPagar.length}) - {BRL.format(totals.aPagar)}</h3><p className="text-[11px] text-zinc-500 mb-4">Despesas previstas e pendentes. Clique em PAGO pra dar baixa.</p><div className="space-y-2 max-h-[500px] overflow-auto">{contas.aPagar.slice(0,20).map(t=><div key={t.id} className={`flex justify-between items-center p-3 rounded-xl ${((t as any).data_vencimento || t.data) < new Date().toISOString().slice(0,10) ? 'bg-red-100 border border-red-200 animate-pulse' : 'bg-zinc-50'}`}><div><div className="font-medium text-xs flex items-center gap-1">{t.descricao} {(t as any).comprovante_url && <a href={(t as any).comprovante_url} target="_blank" className="text-violet-600" title="Comprovante">📎</a>}</div><div className="text-[11px] text-zinc-500">{(t as any).data_vencimento ? new Date((t as any).data_vencimento).toLocaleDateString('pt-BR') : new Date(t.data).toLocaleDateString('pt-BR')} • {(t as any).status}</div></div><div className="text-right"><div className="font-bold text-xs text-red-600">{BRL.format(Number(t.valor))}</div><button onClick={()=>toggleStatus(t)} className="mt-1 text-[10px] bg-zinc-900 text-white px-2 py-1 rounded-lg hover:bg-black">Marcar PAGO</button></div></div>)}</div></Card>
             <Card className="p-6"><h3 className="font-bold mb-1 flex items-center gap-2"><span className="w-2 h-2 bg-emerald-500 rounded-full"></span>Contas a Receber ({contas.aReceber.length}) - {BRL.format(totals.aReceber)}</h3><p className="text-[11px] text-zinc-500 mb-4">Receitas previstas. Dê baixa quando receber.</p><div className="space-y-2 max-h-[500px] overflow-auto">{contas.aReceber.slice(0,20).map(t=><div key={t.id} className="flex justify-between items-center p-3 bg-emerald-50 rounded-xl"><div><div className="font-medium text-xs">{t.descricao}</div><div className="text-[11px] text-zinc-500">{(t as any).data_vencimento ? new Date((t as any).data_vencimento).toLocaleDateString('pt-BR') : new Date(t.data).toLocaleDateString('pt-BR')} • {(t as any).status}</div></div><div className="text-right"><div className="font-bold text-xs text-emerald-700">{BRL.format(Number(t.valor))}</div><button onClick={()=>toggleStatus(t)} className="mt-1 text-[10px] bg-emerald-600 text-white px-2 py-1 rounded-lg">Recebido</button></div></div>)}</div></Card>
           </div>
         )}
@@ -244,27 +335,38 @@ export default function Page() {
               <button onClick={()=>{setModalMode('despesa'); setForm({...form, tipo:'Saída', status:'a_pagar'})}} className={`flex-1 py-2 text-xs rounded-lg font-medium ${modalMode==='despesa' ? 'bg-white shadow-sm text-red-700' : 'text-zinc-500'}`}>💸 Despesa</button>
             </div>
 
-            <input value={form.descricao} onChange={e=>setForm({...form, descricao: e.target.value})} onBlur={e=>checkDuplicate(e.target.value, form.valor, form.vencimento)} placeholder={modalMode==='receita' ? "Ex: PIX CLIENTE LOJA SILVA" : "Ex: FORNECEDOR ATACADÃO"} className="w-full border rounded-xl p-3 text-sm"/>
+            <div>
+              <label className="text-[11px] text-zinc-500">Descrição / Título do Lançamento</label>
+              <input value={form.descricao} onChange={e=>setForm({...form, descricao: e.target.value})} onBlur={e=>checkDuplicate(e.target.value, form.valor, form.vencimento)} placeholder={modalMode==='receita' ? "Ex: PIX CLIENTE LOJA SILVA" : "Ex: FORNECEDOR ATACADÃO"} className="w-full border rounded-xl p-3 text-sm"/>
+            </div>
             {dupWarning && <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex gap-2"><AlertTriangle className="w-4 h-4 shrink-0"/>{dupWarning}</div>}
             
-            <div className="grid grid-cols-2 gap-3">
-              <input type="number" value={form.valor} onChange={e=>setForm({...form, valor: e.target.value})} onBlur={e=>checkDuplicate(form.descricao, e.target.value, form.vencimento)} placeholder="Valor R$" className="border rounded-xl p-3 text-sm"/>
-              <select value={form.status} onChange={e=>setForm({...form, status: e.target.value})} className="border rounded-xl p-3 text-sm">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <div>
+                <label className="text-[11px] text-zinc-500">Valor (R$)</label>
+                <input type="text" value={form.valor ? Number(form.valor).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}) : ""} onChange={e=>{ let v = e.target.value.replace(/\D/g, ""); if(!v) { setForm({...form, valor: ""}); return; } setForm({...form, valor: (parseInt(v)/100).toString()}); }} onBlur={e=>checkDuplicate(form.descricao, form.valor, form.vencimento)} placeholder="0,00" className="w-full border rounded-xl p-3 text-sm"/>
+              </div>
+              <div><label className="text-[11px] text-zinc-500">Empresa</label><select value={form.empresa} onChange={e=>setForm({...form, empresa: e.target.value})} className="w-full border rounded-xl p-3 pr-8 text-sm truncate"><option>BOAH MATRIZ</option><option>SDB</option><option>VILAS</option><option>PASEO</option><option>BARRA</option><option>SOLAR (ADM)</option></select></div>
+              <div className="col-span-2 md:col-span-1"><label className="text-[11px] text-zinc-500">Status</label><select value={form.status} onChange={e=>setForm({...form, status: e.target.value})} className="w-full border rounded-xl p-3 pr-8 text-sm truncate">
                 {modalMode==='receita' ? <><option value="a_receber">A Receber (Previsto)</option><option value="realizado">Recebido (Realizado)</option></> : <><option value="a_pagar">A Pagar (Previsto)</option><option value="pago">Pago (Realizado)</option><option value="previsto">Previsto</option></>}
-              </select>
+              </select></div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div><label className="text-[11px] text-zinc-500">Vencimento</label><input type="date" value={form.vencimento} onChange={e=>setForm({...form, vencimento: e.target.value})} className="w-full border rounded-xl p-3 text-sm"/></div>
-              <div><label className="text-[11px] text-zinc-500">Categoria</label><select value={form.categoria} onChange={e=>setForm({...form, categoria: e.target.value})} className="w-full border rounded-xl p-3 text-sm"><optgroup label="Gerais"><option>Fixo</option><option>Variável</option><option>Venda</option><option>Fornecedor</option><option>Imposto</option><option>Outros</option></optgroup><optgroup label="Plano de Contas">{CATEGORIAS.map(c=><option key={c} value={c}>{c}</option>)}</optgroup></select></div>
+              <div><label className="text-[11px] text-zinc-500">Categoria</label><select value={form.categoria} onChange={e=>setForm({...form, categoria: e.target.value})} className="w-full border rounded-xl p-3 pr-8 text-sm truncate"><optgroup label="Gerais"><option>Fixo</option><option>Variável</option><option>Venda</option><option>Fornecedor</option><option>Imposto</option><option>Outros</option></optgroup><optgroup label="Plano de Contas">{CATEGORIAS.map(c=><option key={c} value={c}>{c}</option>)}</optgroup></select></div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <input value={form.itens} onChange={e=>setForm({...form, itens: e.target.value})} placeholder="Peças / Itens (opcional)" className="border rounded-xl p-3 text-sm"/>
-              <input type="number" value={form.impostos} onChange={e=>setForm({...form, impostos: e.target.value})} placeholder="Impostos R$ (opcional)" className="border rounded-xl p-3 text-sm"/>
+              <div><label className="text-[11px] text-zinc-500">Peças / Itens (Opcional)</label><input value={form.itens} onChange={e=>setForm({...form, itens: e.target.value})} placeholder="Ex: 50 Camisetas" className="w-full border rounded-xl p-3 text-sm"/></div>
+              <div><label className="text-[11px] text-zinc-500">Impostos (Opcional)</label><input type="number" value={form.impostos} onChange={e=>setForm({...form, impostos: e.target.value})} placeholder="R$" className="w-full border rounded-xl p-3 text-sm"/></div>
             </div>
 
-            <input value={form.observacao} onChange={e=>setForm({...form, observacao: e.target.value})} placeholder="Observação / Nº Boleto (opcional)" className="w-full border rounded-xl p-3 text-sm"/>
+            <div className="flex flex-col md:flex-row gap-3 items-center">
+              <input value={form.observacao} onChange={e=>setForm({...form, observacao: e.target.value})} placeholder="Observação / Nº Boleto (opcional)" className="w-full md:flex-1 border rounded-xl p-3 text-sm"/>
+              <label className="w-full md:w-auto flex items-center justify-center gap-2 text-sm text-zinc-600 bg-zinc-50 px-4 py-3 rounded-xl border cursor-pointer hover:bg-zinc-100 transition"><input type="file" className="hidden" onChange={e=>setComprovanteFile(e.target.files?.[0]||null)}/> 📎 {comprovanteFile ? comprovanteFile.name : 'Anexar Recibo'}</label>
+              <label className="w-full md:w-auto flex items-center justify-center gap-2 text-sm text-zinc-600 bg-zinc-50 px-4 py-3 rounded-xl border cursor-pointer hover:bg-zinc-100 transition"><input type="checkbox" checked={form.recorrente} onChange={e=>setForm({...form, recorrente: e.target.checked})} className="w-4 h-4 rounded text-violet-600"/> Repetir Mensalmente</label>
+            </div>
 
             <div className="flex gap-2 pt-2"><button onClick={()=>setShowModal(false)} className="flex-1 border py-3 rounded-xl text-sm">Cancelar</button><button onClick={handleAdd} className={`flex-1 py-3 rounded-xl text-sm font-bold text-white ${modalMode==='receita' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-zinc-900 hover:bg-black'}`}>{modalMode==='receita' ? 'Salvar Receita' : 'Salvar Despesa'}</button></div>
             <p className="text-[10px] text-zinc-400 text-center">Sistema bloqueia duplicado automaticamente por descrição+valor+data</p>
@@ -272,7 +374,7 @@ export default function Page() {
         </div>
       )}
 
-      {showImport && (<div className="fixed inset-0 z-50 bg-black/40 flex items-end md:items-center justify-center p-0 md:p-4"><div className="bg-white w-full md:max-w-2xl rounded-t-2xl md:rounded-2xl p-6 space-y-4 max-h-[85vh] overflow-auto"><h3 className="font-bold text-lg">Importar Arquivo</h3><input type="file" accept=".csv" onChange={handleCsv} className="w-full text-sm border-2 border-dashed rounded-xl p-4"/>{csvPreview.length>0 && <><div className="border rounded-xl overflow-auto max-h-64"><table className="w-full text-xs"><thead><tr className="bg-zinc-50"><th className="p-2 text-left">Data</th><th className="p-2">Descrição</th><th className="p-2">Valor</th></tr></thead><tbody>{csvPreview.map(t=><tr key={t.id} className="border-t"><td className="p-2">{t.data}</td><td className="p-2">{t.descricao}</td><td className="p-2">{BRL.format(t.valor)}</td></tr>)}</tbody></table></div><button onClick={async()=>{ const res = await fetch('/api/transactions', { method: 'POST', body: JSON.stringify(csvPreview.map(c=>({...c, status: c.tipo==='Entrada'?'a_receber':'a_pagar', data_vencimento: c.data}))) }); const j = await res.json(); alert(j.duplicados?.length ? `${j.duplicados.length} duplicados bloqueados` : 'Importado!'); setTransactions([...(j.data||csvPreview), ...transactions]); setCsvPreview([]); setShowImport(false); }} className="w-full bg-violet-600 text-white py-3 rounded-xl">Importar {csvPreview.length} (bloqueia duplicados)</button></>}<button onClick={()=>setShowImport(false)} className="w-full border py-3 rounded-xl">Fechar</button></div></div>)}
+      {showImport && (<div className="fixed inset-0 z-50 bg-black/40 flex items-end md:items-center justify-center p-0 md:p-4"><div className="bg-white w-full md:max-w-2xl rounded-t-2xl md:rounded-2xl p-6 space-y-4 max-h-[85vh] overflow-auto"><h3 className="font-bold text-lg">Importar CSV / OFX</h3><input type="file" accept=".csv,.ofx" onChange={handleFileUpload} className="w-full text-sm border-2 border-dashed rounded-xl p-4"/>{csvPreview.length>0 && <><div className="border rounded-xl overflow-auto max-h-64"><table className="w-full text-xs"><thead><tr className="bg-zinc-50"><th className="p-2 text-left">Data</th><th className="p-2">Descrição</th><th className="p-2">Valor</th></tr></thead><tbody>{csvPreview.map(t=><tr key={t.id} className="border-t"><td className="p-2">{t.data}</td><td className="p-2">{t.descricao}</td><td className="p-2">{BRL.format(t.valor)}</td></tr>)}</tbody></table></div><button onClick={async()=>{ const res = await fetch('/api/transactions', { method: 'POST', body: JSON.stringify(csvPreview.map(c=>({...c, status: c.tipo==='Entrada'?'a_receber':'a_pagar', data_vencimento: c.data}))) }); const j = await res.json(); alert(j.duplicados?.length ? `${j.duplicados.length} duplicados bloqueados` : 'Importado!'); setTransactions([...(j.data||csvPreview), ...transactions]); setCsvPreview([]); setShowImport(false); }} className="w-full bg-violet-600 text-white py-3 rounded-xl">Importar {csvPreview.length} (bloqueia duplicados)</button></>}<button onClick={()=>setShowImport(false)} className="w-full border py-3 rounded-xl">Fechar</button></div></div>)}
     </div>
   );
 }
