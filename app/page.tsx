@@ -528,47 +528,43 @@ export default function Page() {
 
             <div className={`grid grid-cols-1 ${reportType === 'geral' ? 'lg:grid-cols-2' : ''} gap-6`}>
               
-              {/* DRE Waterfall Visulization */}
+              {/* DRE Gerencial - Classic Table */}
               {(reportType === 'geral' || reportType === 'dre') && (
-                <Card className={`p-6 ${reportType === 'geral' ? 'col-span-1 lg:col-span-2' : 'col-span-1 max-w-4xl mx-auto w-full'} bg-gradient-to-br from-zinc-900 to-black text-white print:bg-none print:bg-white print:text-black print:shadow-none print:border-2 print:border-zinc-200`}>
-                  <div className="flex items-center justify-between mb-6">
-                    <h2 className="font-bold text-xl flex items-center gap-2"><TrendingUp className="w-5 h-5 text-emerald-400 print:text-zinc-800"/> DRE Visual (Demonstração do Resultado)</h2>
-                  </div>
-                  
-                  <div className="space-y-4">
-                    <div>
-                      <div className="flex justify-between text-sm mb-1"><span>Receita Bruta</span><span className="font-bold text-emerald-400 print:text-zinc-900">{BRL.format(totals.receitaBruta)}</span></div>
-                      <div className="w-full bg-white/10 print:bg-zinc-100 rounded-full h-3"><div className="bg-emerald-400 print:bg-zinc-800 h-3 rounded-full" style={{width: '100%'}}></div></div>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                      <div className="bg-white/5 print:bg-white print:border-zinc-300 p-4 rounded-xl border border-white/10">
-                        <div className="text-xs text-zinc-400 print:text-zinc-600 mb-1">(-) Impostos</div>
-                        <div className="font-bold text-red-400 print:text-zinc-900">{BRL.format(totals.imposto)}</div>
-                        <div className="text-[10px] mt-1 text-zinc-500">{totals.receitaBruta ? ((totals.imposto/totals.receitaBruta)*100).toFixed(1) : 0}% da Receita</div>
-                      </div>
-                      <div className="bg-white/5 print:bg-white print:border-zinc-300 p-4 rounded-xl border border-white/10">
-                        <div className="text-xs text-zinc-400 print:text-zinc-600 mb-1">(-) Fornecedores/Variável</div>
-                        <div className="font-bold text-red-400 print:text-zinc-900">{BRL.format(totals.fornecedor + totals.variavel)}</div>
-                        <div className="text-[10px] mt-1 text-zinc-500">{totals.receitaBruta ? (((totals.fornecedor + totals.variavel)/totals.receitaBruta)*100).toFixed(1) : 0}% da Receita</div>
-                      </div>
-                      <div className="bg-white/5 print:bg-white print:border-zinc-300 p-4 rounded-xl border border-white/10">
-                        <div className="text-xs text-zinc-400 print:text-zinc-600 mb-1">(-) Custos Fixos</div>
-                        <div className="font-bold text-red-400 print:text-zinc-900">{BRL.format(totals.fixo)}</div>
-                        <div className="text-[10px] mt-1 text-zinc-500">{totals.receitaBruta ? ((totals.fixo/totals.receitaBruta)*100).toFixed(1) : 0}% da Receita</div>
-                      </div>
-                    </div>
-
-                    <div className="pt-4 mt-4 border-t border-white/10 print:border-zinc-200 flex items-end justify-between">
-                      <div>
-                        <div className="text-sm text-zinc-400 print:text-zinc-600 mb-1">Lucro Líquido Final</div>
-                        <div className="text-3xl font-black text-emerald-400 print:text-zinc-900">{BRL.format(totals.lucroLiquido)}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm text-zinc-400 print:text-zinc-600 mb-1">Margem de Lucro</div>
-                        <div className="text-2xl font-bold text-white print:text-zinc-900">{totals.margem.toFixed(1)}%</div>
-                      </div>
-                    </div>
+                <Card className={`p-6 ${reportType === 'geral' ? 'col-span-1 lg:col-span-2' : 'col-span-1 max-w-4xl mx-auto w-full'} print:border-none print:shadow-none`}>
+                  <h2 className="font-bold text-lg mb-4">DRE Gerencial</h2>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <tbody className="divide-y divide-zinc-100">
+                        <tr className="bg-emerald-50/50 print:bg-emerald-50">
+                          <td className="py-3 px-3 font-bold">Receita Bruta</td>
+                          <td className="py-3 px-3 text-right font-bold">{BRL.format(totals.receitaBruta)}</td>
+                        </tr>
+                        <tr>
+                          <td className="py-3 px-3 pl-6">(-) Fornecedores</td>
+                          <td className="py-3 px-3 text-right text-red-600">- {BRL.format(totals.fornecedor)}</td>
+                        </tr>
+                        <tr>
+                          <td className="py-3 px-3 pl-6">(-) Variável</td>
+                          <td className="py-3 px-3 text-right text-red-600">- {BRL.format(totals.variavel)}</td>
+                        </tr>
+                        <tr className="bg-zinc-50 print:bg-zinc-100 font-semibold">
+                          <td className="py-3 px-3">Lucro Bruto</td>
+                          <td className="py-3 px-3 text-right">{BRL.format(totals.lucroBruto)}</td>
+                        </tr>
+                        <tr>
+                          <td className="py-3 px-3 pl-6">(-) Fixos</td>
+                          <td className="py-3 px-3 text-right text-red-600">- {BRL.format(totals.fixo)}</td>
+                        </tr>
+                        <tr>
+                          <td className="py-3 px-3 pl-6">(-) Impostos</td>
+                          <td className="py-3 px-3 text-right text-red-600">- {BRL.format(totals.imposto)}</td>
+                        </tr>
+                        <tr className="bg-zinc-900 text-white font-bold print:bg-zinc-900 print:text-white">
+                          <td className="py-4 px-3 rounded-l-xl print:rounded-none">Lucro Líquido</td>
+                          <td className="py-4 px-3 text-right rounded-r-xl print:rounded-none">{BRL.format(totals.lucroLiquido)} ({totals.margem.toFixed(1)}%)</td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
                 </Card>
               )}
@@ -591,32 +587,36 @@ export default function Page() {
                 </div>
               )}
 
-              {/* DESPESAS: Top 10 Fornecedores */}
+              {/* DESPESAS: Top Fornecedores */}
               {(reportType === 'geral' || reportType === 'despesas') && (
-                <Card className={`p-6 print:border-2 print:border-zinc-200 print:shadow-none ${reportType === 'despesas' ? 'col-span-1 max-w-4xl mx-auto w-full' : ''}`}>
-                  <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><ShoppingCart className="w-5 h-5 text-violet-600 print:text-zinc-900"/> Top 10 Fornecedores</h3>
-                  <div className="space-y-4">
-                    {totals.topFornecedores.length === 0 ? (
-                      <div className="text-sm text-zinc-500 text-center py-8">Nenhum pagamento registrado neste mês.</div>
-                    ) : (
-                      totals.topFornecedores.map((forn: any, idx: number) => {
-                        const pct = totals.saidas ? (forn.valor / totals.saidas) * 100 : 0;
-                        return (
-                          <div key={idx} className="print:break-inside-avoid">
-                            <div className="flex justify-between text-xs mb-1">
-                              <span className="font-medium text-zinc-700 print:text-zinc-900 truncate pr-4">{idx+1}. {forn.nome}</span>
-                              <span className="font-bold whitespace-nowrap print:text-zinc-900">{BRL.format(forn.valor)}</span>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <div className="flex-1 bg-zinc-100 rounded-full h-2 overflow-hidden print:border print:border-zinc-300">
-                                <div className="bg-violet-500 print:bg-zinc-500 h-2 rounded-full" style={{width: `${Math.min(pct, 100)}%`}}></div>
-                              </div>
-                              <span className="text-[10px] text-zinc-500 print:text-zinc-800 font-medium w-8 text-right">{pct.toFixed(1)}%</span>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
+                <Card className={`p-6 print:border-none print:shadow-none ${reportType === 'despesas' ? 'col-span-1 max-w-4xl mx-auto w-full' : ''}`}>
+                  <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><ShoppingCart className="w-5 h-5 text-violet-600 print:text-zinc-900"/> Principais Fornecedores</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-zinc-500">
+                          <th className="text-left py-2 font-medium">Fornecedor</th>
+                          <th className="text-right py-2 font-medium">Valor Pago</th>
+                          <th className="text-right py-2 font-medium w-16">%</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100">
+                        {totals.topFornecedores.length === 0 ? (
+                          <tr><td colSpan={3} className="text-center py-8 text-zinc-500">Nenhum pagamento registrado neste mês.</td></tr>
+                        ) : (
+                          totals.topFornecedores.map((forn: any, idx: number) => {
+                            const pct = totals.saidas ? (forn.valor / totals.saidas) * 100 : 0;
+                            return (
+                              <tr key={idx} className="hover:bg-zinc-50 transition-colors print:break-inside-avoid">
+                                <td className="py-2.5 text-zinc-800 truncate max-w-[200px]"><span className="text-zinc-400 mr-2 text-xs">{idx+1}.</span>{forn.nome}</td>
+                                <td className="py-2.5 text-right font-bold text-zinc-900">{BRL.format(forn.valor)}</td>
+                                <td className="py-2.5 text-right text-xs text-zinc-500">{pct.toFixed(1)}%</td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
                   </div>
                 </Card>
               )}
@@ -624,29 +624,33 @@ export default function Page() {
               {/* Categorias e Impostos */}
               {(reportType === 'geral' || reportType === 'despesas') && (
                 <div className={`space-y-6 ${reportType === 'despesas' ? 'col-span-1 max-w-4xl mx-auto w-full' : ''}`}>
-                  <Card className="p-6 print:border-2 print:border-zinc-200 print:shadow-none">
+                  <Card className="p-6 print:border-none print:shadow-none">
                     <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><PieChart className="w-5 h-5 text-amber-500 print:text-zinc-900"/> Despesas por Categoria</h3>
-                    <div className="space-y-4">
-                      {Object.entries(totals.porCategoria)
-                        .sort((a:any, b:any) => b[1] - a[1])
-                        .slice(0, 15) // Expand to 15 if it's the isolated view
-                        .map(([cat, val]: any, idx) => {
-                          const pct = totals.saidas ? (val / totals.saidas) * 100 : 0;
-                          return (
-                            <div key={idx} className="print:break-inside-avoid">
-                              <div className="flex justify-between text-xs mb-1">
-                                <span className="font-medium text-zinc-700 print:text-zinc-900 truncate pr-4">{cat}</span>
-                                <span className="font-bold whitespace-nowrap print:text-zinc-900">{BRL.format(val)}</span>
-                              </div>
-                              <div className="flex items-center gap-3">
-                                <div className="flex-1 bg-zinc-100 rounded-full h-2 overflow-hidden print:border print:border-zinc-300">
-                                  <div className="bg-amber-500 print:bg-zinc-500 h-2 rounded-full" style={{width: `${Math.min(pct, 100)}%`}}></div>
-                                </div>
-                                <span className="text-[10px] text-zinc-500 print:text-zinc-800 font-medium w-8 text-right">{pct.toFixed(1)}%</span>
-                              </div>
-                            </div>
-                          );
-                      })}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b text-zinc-500">
+                            <th className="text-left py-2 font-medium">Categoria</th>
+                            <th className="text-right py-2 font-medium">Total Acumulado</th>
+                            <th className="text-right py-2 font-medium w-16">%</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-100">
+                          {Object.entries(totals.porCategoria)
+                            .sort((a:any, b:any) => b[1] - a[1])
+                            .slice(0, reportType === 'despesas' ? 25 : 8)
+                            .map(([cat, val]: any, idx) => {
+                              const pct = totals.saidas ? (val / totals.saidas) * 100 : 0;
+                              return (
+                                <tr key={idx} className="hover:bg-zinc-50 transition-colors print:break-inside-avoid">
+                                  <td className="py-2.5 text-zinc-800 truncate max-w-[200px]">{cat}</td>
+                                  <td className="py-2.5 text-right font-bold text-zinc-900">{BRL.format(val)}</td>
+                                  <td className="py-2.5 text-right text-xs text-zinc-500">{pct.toFixed(1)}%</td>
+                                </tr>
+                              );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   </Card>
 
