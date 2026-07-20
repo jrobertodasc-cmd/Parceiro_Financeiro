@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Transaction, supabase } from '@/lib/supabase';
 import { generateMockTransactions } from '@/lib/mock';
 import { classifyWithAI } from '@/lib/classify';
-import { Plus, Trash2, ArrowUpCircle, ArrowDownCircle, Search, Edit2, Pencil, Save, X, Calendar, Upload, BarChart3, Clock, Wallet, Settings, LogOut, Check, Undo2, PieChart as PieChartIcon, Activity, Layers, Target, BarChart as BarChartIcon, TrendingUp, Download, TrendingDown, MessageCircle, Sparkles, Send, AlertTriangle, FileSpreadsheet, ShoppingCart, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, ArrowUpCircle, ArrowDownCircle, Search, Edit2, Pencil, Save, X, Calendar, Upload, BarChart3, Clock, Wallet, Settings, LogOut, Check, Undo2, PieChart as PieChartIcon, Activity, Layers, Target, BarChart as BarChartIcon, TrendingUp, Download, TrendingDown, MessageCircle, Sparkles, Send, AlertTriangle, FileSpreadsheet, ShoppingCart, ChevronDown, ChevronRight, Lock } from 'lucide-react';
 import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area, AreaChart, PieChart, Pie, Cell, Legend, BarChart } from 'recharts';
 import Papa from 'papaparse';
 import { CATEGORIAS } from '@/lib/categorias';
@@ -25,6 +25,8 @@ export default function Page() {
   const [listFilter, setListFilter] = useState<'pendentes' | 'realizados' | 'todas'>('pendentes');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [showLockModal, setShowLockModal] = useState(false);
+  const [lockMonth, setLockMonth] = useState("");
   const [modalMode, setModalMode] = useState<'receita'|'despesa'>('despesa');
   const [showImport, setShowImport] = useState(false);
   const [search, setSearch] = useState("");
@@ -39,7 +41,7 @@ export default function Page() {
   const [budgets, setBudgets] = useState<any[]>([]);
   const [budgetForm, setBudgetForm] = useState({ tipo: 'Despesa', referencia: '21701 - Comunicação/Mídia Digital - Despesas Operacionais/Fecebook/Email/Mailship/Agencia/Programas e apps', valor: '' });
   const [flowView, setFlowView] = useState<'diario'|'semanal'|'acumulado'|'tendencia'|'realizado'>('realizado');
-  const [form, setForm] = useState({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: "Saída" as any, categoria: "Fornecedor" as any, status: "a_pagar" as any, observacao: "", itens: "", impostos: "", impostos_federais: "", empresa: "BOAH MATRIZ", recorrente: false, rateio_filiais: [] as {empresa:string, valor:number}[], rateio_categorias: [] as {categoria:string, valor:number}[] });
+  const [form, setForm] = useState({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: "Saída" as any, categoria: "Fornecedor" as any, status: "a_pagar" as any, observacao: "", itens: "", impostos: "", impostos_federais: "", empresa: "BOAH MATRIZ", recorrente: false, recorrente_meses: 12, rateio_filiais: [] as {empresa:string, valor:number, categoria?:string}[], rateio_categorias: [] as {categoria:string, valor:number}[] });
   const [showRateio, setShowRateio] = useState(false);
   const [comprovanteFile, setComprovanteFile] = useState<File|null>(null);
   const [csvPreview, setCsvPreview] = useState<Transaction[]>([]);
@@ -49,6 +51,9 @@ export default function Page() {
   const [editingId, setEditingId] = useState<string|null>(null);
   const [reportType, setReportType] = useState<'geral'|'dre'|'despesas'|'receitas'>('geral');
   const [expandedDreGroup, setExpandedDreGroup] = useState<string | null>(null);
+
+  const configFechamento = useMemo(() => transactions.find(t => t.descricao === '___CONFIG_FECHAMENTO___'), [transactions]);
+  const fechamentoMes = configFechamento?.data_vencimento || '';
 
   const fetchData = useCallback(() => {
     fetch('/api/transactions', { cache: 'no-store' })
@@ -376,7 +381,7 @@ export default function Page() {
   async function handleAdd() {
     try {
       if (!form.descricao || !form.valor) return alert("Preencha descrição e valor");
-      if (!form.vencimento) return alert("Preencha a data de vencimento");
+      if (fechamentoMes && form.vencimento.slice(0,7) <= fechamentoMes) { alert(`O mês ${fechamentoMes} está fechado. Não é possível alterar.`); return; }
       
       let urlComprovante = null;
       if (comprovanteFile && supabase) {
@@ -393,7 +398,7 @@ export default function Page() {
         if (checkDuplicate(form.descricao, form.valor, form.vencimento)) { if (!confirm("Detectamos duplicado! Deseja salvar mesmo assim?")) return; }
         
         const novas: any[] = [];
-        const qty = form.recorrente ? 12 : 1;
+        const qty = form.recorrente ? form.recorrente_meses : 1;
         for (let i=0; i<qty; i++) {
           let vDate = new Date(form.vencimento);
           if (isNaN(vDate.getTime())) vDate = new Date();
@@ -405,7 +410,7 @@ export default function Page() {
           const fed = Number(form.impostos_federais || 0);
           const netValor = isSaida ? (Number(form.valor) - iss - fed) : Number(form.valor);
 
-          novas.push({ id: generateUUID(), data: novaData, descricao: form.descricao.toUpperCase() + (form.recorrente && i>0 ? ` (${i+1}/12)` : ''), categoria: form.categoria, tipo: form.tipo, valor: netValor, status: i===0 ? form.status : (form.tipo==='Entrada' ? 'a_receber' : 'a_pagar'), data_vencimento: novaData, observacao: form.observacao, itens: form.itens, impostos: form.impostos ? Number(form.impostos) : null, empresa: form.empresa, recorrente: form.recorrente, comprovante_url: urlComprovante });
+          novas.push({ id: generateUUID(), data: novaData, descricao: form.descricao.toUpperCase() + (form.recorrente && i>0 ? ` (${i+1}/${form.recorrente_meses})` : ''), categoria: form.categoria, tipo: form.tipo, valor: netValor, status: i===0 ? form.status : (form.tipo==='Entrada' ? 'a_receber' : 'a_pagar'), data_vencimento: novaData, observacao: form.observacao, itens: form.itens, impostos: form.impostos ? Number(form.impostos) : null, empresa: form.empresa, recorrente: form.recorrente, comprovante_url: urlComprovante });
           
           if (form.tipo === 'Saída') {
             if (form.impostos && Number(form.impostos) > 0) {
@@ -422,7 +427,7 @@ export default function Page() {
         setTransactions([...novas, ...transactions]); setShowModal(false);
         try { await fetch('/api/transactions', { method: 'POST', body: JSON.stringify(novas) }); } catch(e){}
       }
-      setForm({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: modalMode==='receita' ? 'Entrada' : 'Saída', categoria: modalMode==='receita' ? 'Venda' : 'Fornecedor', status: modalMode==='receita' ? 'a_receber' : 'a_pagar', observacao: "", itens: "", impostos: "", impostos_federais: "", empresa: "BOAH MATRIZ", recorrente: false, rateio_filiais: [], rateio_categorias: [] });
+      setForm({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: modalMode==='receita' ? 'Entrada' : 'Saída', categoria: modalMode==='receita' ? 'Venda' : 'Fornecedor', status: modalMode==='receita' ? 'a_receber' : 'a_pagar', observacao: "", itens: "", impostos: "", impostos_federais: "", empresa: "BOAH MATRIZ", recorrente: false, recorrente_meses: 12, rateio_filiais: [], rateio_categorias: [] });
       setShowRateio(false);
     } catch (err: any) {
       alert("Erro ao salvar: " + err.message);
@@ -431,8 +436,10 @@ export default function Page() {
   }
 
   async function excluir(id: string) {
+    const tr = transactions.find(t => t.id === id);
+    if (tr && fechamentoMes && (tr.data_vencimento||tr.data).slice(0,7) <= fechamentoMes) { alert(`Este mês está fechado/trancado (${fechamentoMes}).`); return; }
     if (!confirm("Tem certeza que deseja excluir?")) return;
-    setTransactions([...transactions.filter(t=>t.id!==id)]);
+    setTransactions(transactions.filter(t=>t.id!==id));
     try { await fetch(`/api/transactions?id=${id}`, { method: 'DELETE' }); } catch(e){}
   }
 
@@ -452,7 +459,8 @@ export default function Page() {
   }
 
   function editar(t: any) {
-    setForm({ descricao: t.descricao, valor: String(t.valor), data: t.data.slice(0,10), vencimento: (t.data_vencimento||t.data).slice(0,10), tipo: t.tipo, categoria: t.categoria, status: t.status||'realizado', observacao: t.observacao||'', itens: t.itens||'', impostos: t.impostos ? String(t.impostos) : '', impostos_federais: '', empresa: t.empresa || 'BOAH MATRIZ', recorrente: t.recorrente || false, rateio_filiais: t.rateio_filiais || [], rateio_categorias: t.rateio_categorias || [] });
+    if (t.descricao !== '___CONFIG_FECHAMENTO___' && fechamentoMes && (t.data_vencimento||t.data).slice(0,7) <= fechamentoMes) { alert(`Este mês está fechado/trancado (${fechamentoMes}). O lançamento é apenas de leitura.`); return; }
+    setForm({ descricao: t.descricao, valor: String(t.valor), data: t.data.slice(0,10), vencimento: (t.data_vencimento||t.data).slice(0,10), tipo: t.tipo, categoria: t.categoria, status: t.status||'realizado', observacao: t.observacao||'', itens: t.itens||'', impostos: t.impostos ? String(t.impostos) : '', impostos_federais: '', empresa: t.empresa || 'BOAH MATRIZ', recorrente: t.recorrente || false, recorrente_meses: 12, rateio_filiais: t.rateio_filiais || [], rateio_categorias: t.rateio_categorias || [] });
     if (t.rateio_filiais?.length > 0 || t.rateio_categorias?.length > 0) setShowRateio(true); else setShowRateio(false);
     setEditingId(t.id);
     setModalMode(t.tipo === 'Entrada' ? 'receita' : 'despesa');
@@ -460,6 +468,7 @@ export default function Page() {
   }
 
   async function toggleStatus(t: any) {
+    if (fechamentoMes && (t.data_vencimento||t.data).slice(0,7) <= fechamentoMes) { alert(`Este mês está fechado/trancado (${fechamentoMes}).`); return; }
     const isPago = ['pago', 'realizado'].includes(t.status || 'realizado');
     const newStatus = isPago ? (t.tipo==='Entrada' ? 'a_receber' : 'a_pagar') : (t.tipo==='Entrada' ? 'realizado' : 'pago');
     setTransactions(transactions.map(tr=> tr.id===t.id ? {...tr, status: newStatus as any, data_pagamento: isPago ? null : new Date().toISOString().slice(0,10)} as any : tr));
@@ -760,6 +769,7 @@ export default function Page() {
             <button onClick={()=>{setModalMode('receita'); setForm({...form, tipo:'Entrada', status:'a_receber', categoria:'Venda'}); setShowModal(true)}} className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-emerald-600 text-white rounded-xl text-xs font-medium hover:bg-emerald-700"><Plus className="w-3.5 h-3.5"/> Receita</button>
             <button onClick={()=>{setModalMode('despesa'); setForm({...form, tipo:'Saída', status:'a_pagar', categoria:'Fornecedor'}); setShowModal(true)}} className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-zinc-900 text-white rounded-xl text-xs font-medium hover:bg-black"><Plus className="w-3.5 h-3.5"/> Despesa</button>
             <button onClick={()=>setShowImport(true)} className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-white border rounded-xl text-xs font-medium"><Upload className="w-3.5 h-3.5"/> CSV/OFX</button>
+            <button onClick={()=>{setLockMonth(fechamentoMes); setShowLockModal(true)}} className={`hidden md:flex items-center gap-2 px-3 py-1.5 border rounded-xl text-xs font-medium ${fechamentoMes ? 'bg-red-50 text-red-700 border-red-200' : 'bg-white'}`} title="Fechamento de Mês"><Lock className="w-3.5 h-3.5"/> {fechamentoMes ? `Fechado: ${fechamentoMes}` : 'Fechar Mês'}</button>
             <div className="w-8 h-8 rounded-full bg-violet-100 flex items-center justify-center text-violet-700 font-bold text-sm">R</div><button onClick={async ()=>{ if(supabase) await supabase.auth.signOut(); setLogged(false); }}><LogOut className="w-4 h-4"/></button>
           </div>
         </div>
@@ -839,7 +849,6 @@ export default function Page() {
         {tab==='reports' && (
           <div className="space-y-6 print:m-0 print:p-0 print:block">
             
-            {/* Sub-tabs menu - Hidden in Print */}
             <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center print:hidden">
               <div className="flex bg-zinc-100 p-1 rounded-xl w-full sm:w-auto overflow-x-auto">
                 <button onClick={()=>setReportType('geral')} className={`px-4 py-2 text-sm rounded-lg font-medium whitespace-nowrap transition-colors ${reportType==='geral' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}>📊 Geral</button>
@@ -855,7 +864,6 @@ export default function Page() {
 
             <div className={`grid grid-cols-1 ${reportType === 'geral' ? 'lg:grid-cols-2' : ''} gap-6`}>
               
-              {/* DRE Gerencial - Advanced Table */}
               {(reportType === 'geral' || reportType === 'dre') && (
                 <Card className={`p-6 ${reportType === 'geral' ? 'col-span-1 lg:col-span-2' : 'col-span-1 max-w-4xl mx-auto w-full'} print:border-none print:shadow-none`}>
                   <h2 className="font-bold text-lg mb-4">DRE Gerencial</h2>
@@ -865,7 +873,6 @@ export default function Page() {
                 </Card>
               )}
 
-              {/* GRÁFICOS DO DRE */}
               {(reportType === 'geral' || reportType === 'dre') && (
                 <div className="col-span-1 lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6 print:hidden">
                   <Card className="p-6 flex flex-col justify-center items-center">
@@ -923,7 +930,6 @@ export default function Page() {
                 </div>
               )}
 
-              {/* RECEITAS */}
               {reportType === 'receitas' && (
                 <div className={`space-y-6 ${reportType === 'receitas' ? 'col-span-1 max-w-4xl mx-auto w-full' : ''}`}>
                   <Card className="p-6 bg-emerald-50 border-emerald-200 print:border-2 print:border-zinc-200 print:bg-white">
@@ -980,7 +986,6 @@ export default function Page() {
                 </div>
               )}
 
-              {/* DESPESAS: Top Fornecedores */}
               {reportType === 'despesas' && (
                 <Card className={`p-6 print:border-none print:shadow-none ${reportType === 'despesas' ? 'col-span-1 max-w-4xl mx-auto w-full' : ''}`}>
                   <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><ShoppingCart className="w-5 h-5 text-violet-600 print:text-zinc-900"/> Principais Fornecedores</h3>
@@ -1014,7 +1019,6 @@ export default function Page() {
                 </Card>
               )}
 
-              {/* Categorias e Impostos */}
               {reportType === 'despesas' && (
                 <div className={`space-y-6 ${reportType === 'despesas' ? 'col-span-1 max-w-4xl mx-auto w-full' : ''}`}>
                   <Card className="p-6 print:border-none print:shadow-none">
@@ -1170,6 +1174,44 @@ export default function Page() {
 
       {chatOpen && (<div className="fixed bottom-24 right-6 w-[92vw] md:w-[380px] z-40"><Card className="shadow-2xl border-violet-200 overflow-hidden flex flex-col max-h-[70vh]"><div className="bg-violet-600 p-4 flex justify-between items-center text-white"><div className="flex items-center gap-2"><Sparkles className="w-4 h-4"/><span className="font-bold text-sm">Controller IA</span></div><button onClick={()=>setChatOpen(false)}><X className="w-4 h-4"/></button></div><div className="p-4 overflow-y-auto flex-1 bg-violet-50/30 text-sm whitespace-pre-wrap">{aiLoading ? "Analisando..." : aiAnswer}</div><div className="p-3 border-t bg-white flex gap-2"><input value={aiQuestion} onChange={e=>setAiQuestion(e.target.value)} onKeyDown={e=>e.key==='Enter'&&askAI()} placeholder="Pergunte algo..." className="flex-1 border rounded-xl px-3 py-2.5 text-sm"/><button onClick={askAI} className="bg-violet-600 text-white p-2.5 rounded-xl"><Send className="w-4 h-4"/></button></div></Card></div>)}
 
+        {showLockModal && (
+          <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+            <div className="bg-white max-w-sm w-full rounded-2xl p-6">
+              <h3 className="font-bold text-lg mb-2 flex items-center gap-2"><Lock className="w-5 h-5 text-red-600"/> Fechamento de Mês</h3>
+              <p className="text-xs text-zinc-500 mb-4">Tranque um mês para impedir qualquer edição ou exclusão de transações daquele mês para trás. Garante a segurança e auditoria do seu histórico.</p>
+              
+              <div className="mb-4">
+                <label className="text-xs font-bold text-zinc-700 mb-1 block">Mês a trancar (e anteriores):</label>
+                <input type="month" value={lockMonth} onChange={e=>setLockMonth(e.target.value)} className="w-full border p-3 rounded-xl"/>
+                <p className="text-[10px] text-zinc-400 mt-1">Deixe em branco para destravar o sistema.</p>
+              </div>
+
+              <div className="flex gap-2 justify-end">
+                <button onClick={()=>setShowLockModal(false)} className="px-4 py-2 text-sm text-zinc-500 hover:bg-zinc-100 rounded-xl">Cancelar</button>
+                <button onClick={async ()=>{
+                  const existing = configFechamento;
+                  const novaData = lockMonth ? `${lockMonth}-28` : '';
+                  const payload = { id: existing?.id || generateUUID(), descricao: '___CONFIG_FECHAMENTO___', valor: 0, status: 'fechamento', data_vencimento: lockMonth || '', data: novaData, empresa: 'BOAH MATRIZ', tipo: 'Saída', categoria: 'Outros' };
+                  
+                  if (existing) {
+                    if (!lockMonth) {
+                      setTransactions(transactions.filter(t=>t.id !== existing.id));
+                      try { await fetch('/api/transactions?id='+existing.id, {method:'DELETE'}); }catch(e){}
+                    } else {
+                      setTransactions(transactions.map(t=>t.id === existing.id ? {...t, data_vencimento: lockMonth, data: novaData} : t));
+                      try { await fetch('/api/transactions', {method:'PATCH', body: JSON.stringify(payload)}); }catch(e){}
+                    }
+                  } else if (lockMonth) {
+                    setTransactions([...transactions, payload as any]);
+                    try { await fetch('/api/transactions', {method:'POST', body: JSON.stringify([payload])}); }catch(e){}
+                  }
+                  setShowLockModal(false);
+                }} className="px-4 py-2 text-sm bg-red-600 text-white rounded-xl font-bold hover:bg-red-700">Salvar Trava</button>
+              </div>
+            </div>
+          </div>
+        )}
+  
       {showModal && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-end md:items-center justify-center p-0 md:p-4">
           <div className="bg-white w-full md:max-w-md rounded-t-2xl md:rounded-2xl p-6 space-y-4 max-h-[90vh] overflow-auto">
@@ -1230,8 +1272,19 @@ export default function Page() {
 
             <div className="flex flex-col md:flex-row gap-3 items-center">
               <input value={form.observacao} onChange={e=>setForm({...form, observacao: e.target.value})} placeholder="Observação / Nº Boleto (opcional)" className="w-full md:flex-1 border rounded-xl p-3 text-sm"/>
-              <label className="w-full md:w-auto flex items-center justify-center gap-2 text-sm text-zinc-600 bg-zinc-50 px-4 py-3 rounded-xl border cursor-pointer hover:bg-zinc-100 transition"><input type="file" className="hidden" onChange={e=>setComprovanteFile(e.target.files?.[0]||null)}/> 📸 {comprovanteFile ? comprovanteFile.name : 'Anexar Recibo'}</label>
-              <label className="w-full md:w-auto flex items-center justify-center gap-2 text-sm text-zinc-600 bg-zinc-50 px-4 py-3 rounded-xl border cursor-pointer hover:bg-zinc-100 transition"><input type="checkbox" checked={form.recorrente} onChange={e=>setForm({...form, recorrente: e.target.checked})} className="w-4 h-4 rounded text-violet-600"/> Repetir Mensalmente</label>
+              <label className="w-full md:w-auto flex items-center justify-center gap-2 text-sm text-zinc-600 bg-zinc-50 px-4 py-3 rounded-xl border cursor-pointer hover:bg-zinc-100 transition"><input type="file" className="hidden" onChange={e=>setComprovanteFile(e.target.files?.[0]||null)}/> 📎 {comprovanteFile ? comprovanteFile.name : 'Anexar Recibo'}</label>
+                
+                <div className="w-full md:w-auto flex items-center gap-2 bg-zinc-50 px-4 py-2 rounded-xl border hover:bg-zinc-100 transition h-[46px]">
+                  <label className="flex items-center gap-2 text-sm text-zinc-600 cursor-pointer">
+                    <input type="checkbox" checked={form.recorrente} onChange={e=>setForm({...form, recorrente: e.target.checked})} className="w-4 h-4 rounded text-violet-600"/> Repetir
+                  </label>
+                  {form.recorrente && (
+                    <div className="flex items-center gap-1 ml-2 border-l pl-3">
+                      <input type="number" min="2" max="60" value={form.recorrente_meses} onChange={e=>setForm({...form, recorrente_meses: Number(e.target.value)})} className="w-12 bg-transparent border-b p-1 text-xs text-center focus:outline-none"/>
+                      <span className="text-[10px] text-zinc-500">meses</span>
+                    </div>
+                  )}
+                </div>
             </div>
 
             <div className="border-t pt-2">
