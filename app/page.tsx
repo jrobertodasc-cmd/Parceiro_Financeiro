@@ -88,27 +88,11 @@ export default function Page() {
         flattened.push(baseT);
         return;
       }
-      if (t.rateio_filiais && t.rateio_filiais.length > 0 && (!t.rateio_categorias || t.rateio_categorias.length === 0)) {
+      if (t.rateio_filiais && t.rateio_filiais.length > 0) {
         t.rateio_filiais.forEach(rf => {
-          flattened.push({ ...baseT, empresa: rf.empresa, valor: rf.valor });
+          flattened.push({ ...baseT, empresa: rf.empresa, categoria: rf.categoria || baseT.categoria, valor: rf.valor });
         });
         return;
-      }
-      if (t.rateio_categorias && t.rateio_categorias.length > 0 && (!t.rateio_filiais || t.rateio_filiais.length === 0)) {
-        t.rateio_categorias.forEach(rc => {
-          flattened.push({ ...baseT, categoria: rc.categoria as any, valor: rc.valor });
-        });
-        return;
-      }
-      if (t.rateio_filiais && t.rateio_categorias && t.rateio_filiais.length > 0 && t.rateio_categorias.length > 0) {
-        const totalCat = t.rateio_categorias.reduce((s,c)=>s+c.valor, 0);
-        t.rateio_filiais.forEach(rf => {
-          t.rateio_categorias!.forEach(rc => {
-            const propCat = totalCat > 0 ? rc.valor / totalCat : 0;
-            const virtualValor = rf.valor * propCat;
-            flattened.push({ ...baseT, empresa: rf.empresa, categoria: rc.categoria as any, valor: virtualValor });
-          });
-        });
       }
     });
     return flattened;
@@ -1204,26 +1188,17 @@ export default function Page() {
               {showRateio && (
                 <div className="mt-3 space-y-4 bg-zinc-50 p-4 rounded-xl border">
                   <div>
-                    <h4 className="text-xs font-bold mb-2 text-zinc-700">Rateio por Filiais</h4>
+                    <h4 className="text-xs font-bold mb-2 text-zinc-700">Rateio Avançado (Filial / Categoria)</h4>
+                    <p className="text-[10px] text-zinc-500 mb-3">Adicione os valores separados. Se deixar a categoria em branco, será usada a categoria principal do lançamento.</p>
                     {form.rateio_filiais.map((rf, idx) => (
-                      <div key={idx} className="flex gap-2 mb-2 items-center">
-                        <select value={rf.empresa} onChange={(e) => { const newR = [...form.rateio_filiais]; newR[idx].empresa = e.target.value; setForm({...form, rateio_filiais: newR})}} className="border p-2 rounded-lg text-xs flex-1"><option>BOAH MATRIZ</option><option>HORTO</option><option>SDB</option><option>VILAS</option><option>PASEO</option><option>BARRA</option><option>SOLAR (ADM)</option></select>
+                      <div key={idx} className="flex gap-2 mb-2 items-center flex-wrap md:flex-nowrap">
+                        <select value={rf.empresa} onChange={(e) => { const newR = [...form.rateio_filiais]; newR[idx].empresa = e.target.value; setForm({...form, rateio_filiais: newR})}} className="border p-2 rounded-lg text-xs md:w-32"><option>BOAH MATRIZ</option><option>HORTO</option><option>SDB</option><option>VILAS</option><option>PASEO</option><option>BARRA</option><option>SOLAR (ADM)</option></select>
+                        <input list="categorias-list" placeholder="Categoria (Opcional)..." value={rf.categoria || ''} onChange={(e) => { const newR = [...form.rateio_filiais]; newR[idx].categoria = e.target.value; setForm({...form, rateio_filiais: newR})}} className="border p-2 rounded-lg text-xs flex-1 min-w-[150px]"/>
                         <input type="number" placeholder="R$ 0,00" value={rf.valor||''} onChange={(e) => { const newR = [...form.rateio_filiais]; newR[idx].valor = Number(e.target.value); setForm({...form, rateio_filiais: newR})}} className="border p-2 rounded-lg text-xs w-24"/>
                         <button onClick={()=>{ const newR = [...form.rateio_filiais]; newR.splice(idx,1); setForm({...form, rateio_filiais: newR})}} className="text-red-500 hover:bg-red-50 p-1 rounded"><Trash2 className="w-4 h-4"/></button>
                       </div>
                     ))}
-                    <button onClick={()=>setForm({...form, rateio_filiais: [...form.rateio_filiais, {empresa:'BOAH MATRIZ', valor:0}]})} className="text-[10px] bg-zinc-200 px-2 py-1 rounded">Adicionar Filial</button>
-                  </div>
-                  <div className="border-t pt-3">
-                    <h4 className="text-xs font-bold mb-2 text-zinc-700">Rateio Contábil (Categorias)</h4>
-                    {form.rateio_categorias.map((rc, idx) => (
-                      <div key={idx} className="flex gap-2 mb-2 items-center">
-                        <input list="categorias-list" value={rc.categoria} onChange={(e) => { const newR = [...form.rateio_categorias]; newR[idx].categoria = e.target.value; setForm({...form, rateio_categorias: newR})}} placeholder="Categoria..." className="border p-2 rounded-lg text-xs flex-1"/>
-                        <input type="number" placeholder="R$ 0,00" value={rc.valor||''} onChange={(e) => { const newR = [...form.rateio_categorias]; newR[idx].valor = Number(e.target.value); setForm({...form, rateio_categorias: newR})}} className="border p-2 rounded-lg text-xs w-24"/>
-                        <button onClick={()=>{ const newR = [...form.rateio_categorias]; newR.splice(idx,1); setForm({...form, rateio_categorias: newR})}} className="text-red-500 hover:bg-red-50 p-1 rounded"><Trash2 className="w-4 h-4"/></button>
-                      </div>
-                    ))}
-                    <button onClick={()=>setForm({...form, rateio_categorias: [...form.rateio_categorias, {categoria:'', valor:0}]})} className="text-[10px] bg-zinc-200 px-2 py-1 rounded">Adicionar Categoria</button>
+                    <button onClick={()=>setForm({...form, rateio_filiais: [...form.rateio_filiais, {empresa:'BOAH MATRIZ', categoria: '', valor:0}]})} className="text-[10px] bg-zinc-200 px-2 py-1 rounded">Adicionar Linha de Rateio</button>
                   </div>
                 </div>
               )}
