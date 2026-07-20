@@ -453,6 +453,19 @@ export default function Page() {
       const idsParaBaixar = [];
       let trUpdates = [...transactions];
       
+      let fileEmpresa = empresaFiltro !== 'TODAS' ? empresaFiltro : 'BOAH MATRIZ';
+      const acctMatch = text.match(/<ACCTID>([^<\s]+)/i);
+      if (acctMatch) {
+         const acc = acctMatch[1];
+         if (acc.includes('98775')) fileEmpresa = 'BOAH MATRIZ';
+         else if (acc.includes('98936')) fileEmpresa = 'SOLAR (ADM)';
+         else if (acc.includes('98770')) fileEmpresa = 'HORTO';
+         else if (acc.includes('98771')) fileEmpresa = 'SDB';
+         else if (acc.includes('98772')) fileEmpresa = 'VILAS';
+         else if (acc.includes('98773')) fileEmpresa = 'PASEO';
+         else if (acc.includes('98774')) fileEmpresa = 'BARRA';
+      }
+
       const blocks = text.split(/<STMTTRN>/i).slice(1);
       for (const b of blocks) {
         const amtMatch = b.match(/<TRNAMT>([^<]+)/i);
@@ -477,7 +490,7 @@ export default function Page() {
             (match as any).data_pagamento = new Date().toISOString().slice(0,10);
             try { fetch('/api/transactions', { method: 'PATCH', body: JSON.stringify({ id: match.id, status: match.status, data_pagamento: (match as any).data_pagamento }) }); } catch(e){}
           } else {
-            novasParaInserir.push({ id: generateUUID(), data: date, descricao: memoMatch[1].trim().toUpperCase(), categoria: 'Outros', tipo, valor: valorAbs, status: 'realizado', data_vencimento: date, empresa: empresaFiltro !== 'TODAS' ? empresaFiltro : 'BOAH MATRIZ' });
+            novasParaInserir.push({ id: generateUUID(), data: date, descricao: memoMatch[1].trim().toUpperCase(), categoria: 'Outros', tipo, valor: valorAbs, status: 'realizado', data_vencimento: date, empresa: fileEmpresa });
           }
         }
       }
@@ -717,7 +730,7 @@ export default function Page() {
           <div className="flex flex-1 max-w-xl mx-auto md:mx-4 items-center gap-2">
             <input type="month" value={mesFiltro} onChange={e=>setMesFiltro(e.target.value)} className="bg-zinc-100 border-none rounded-xl px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-violet-600" />
             <select value={empresaFiltro} onChange={e=>setEmpresaFiltro(e.target.value)} className="bg-zinc-100 border-none rounded-xl px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-violet-600 flex-1">
-              <option value="TODAS">Todas as Lojas</option><option>BOAH MATRIZ</option><option>SDB</option><option>VILAS</option><option>PASEO</option><option>BARRA</option><option>SOLAR (ADM)</option>
+              <option value="TODAS">Todas as Lojas</option><option>BOAH MATRIZ</option><option>HORTO</option><option>SDB</option><option>VILAS</option><option>PASEO</option><option>BARRA</option><option>SOLAR (ADM)</option>
             </select>
           </div>
           <div className="flex items-center gap-2">
@@ -1001,7 +1014,7 @@ export default function Page() {
                   <label className="text-[11px] text-zinc-500">{budgetForm.tipo==='Receita' ? 'Qual Loja?' : 'Qual Categoria/Centro de Custo?'}</label>
                   {budgetForm.tipo === 'Receita' ? (
                     <select value={budgetForm.referencia} onChange={e=>setBudgetForm({...budgetForm, referencia: e.target.value})} className="w-full border rounded-xl p-3 text-sm truncate">
-                      <option>BOAH MATRIZ</option><option>SDB</option><option>VILAS</option><option>PASEO</option><option>BARRA</option><option>SOLAR (ADM)</option>
+                      <option>BOAH MATRIZ</option><option>HORTO</option><option>SDB</option><option>VILAS</option><option>PASEO</option><option>BARRA</option><option>SOLAR (ADM)</option>
                     </select>
                   ) : (
                     <>
@@ -1095,7 +1108,7 @@ export default function Page() {
                 <label className="text-[11px] text-zinc-500">Valor (R$)</label>
                 <input type="text" value={form.valor ? Number(form.valor).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}) : ""} onChange={e=>{ let v = e.target.value.replace(/\D/g, ""); if(!v) { setForm({...form, valor: ""}); return; } setForm({...form, valor: (parseInt(v)/100).toString()}); }} onBlur={e=>checkDuplicate(form.descricao, form.valor, form.vencimento)} placeholder="0,00" className="w-full border rounded-xl p-3 text-sm"/>
               </div>
-              <div><label className="text-[11px] text-zinc-500">Empresa</label><select value={form.empresa} onChange={e=>setForm({...form, empresa: e.target.value})} className="w-full border rounded-xl p-3 pr-8 text-sm truncate"><option>BOAH MATRIZ</option><option>SDB</option><option>VILAS</option><option>PASEO</option><option>BARRA</option><option>SOLAR (ADM)</option></select></div>
+              <div><label className="text-[11px] text-zinc-500">Empresa</label><select value={form.empresa} onChange={e=>setForm({...form, empresa: e.target.value})} className="w-full border rounded-xl p-3 pr-8 text-sm truncate"><option>BOAH MATRIZ</option><option>HORTO</option><option>SDB</option><option>VILAS</option><option>PASEO</option><option>BARRA</option><option>SOLAR (ADM)</option></select></div>
               <div className="col-span-2 md:col-span-1"><label className="text-[11px] text-zinc-500">Status</label><select value={form.status} onChange={e=>setForm({...form, status: e.target.value})} className="w-full border rounded-xl p-3 pr-8 text-sm truncate">
                 {modalMode==='receita' ? <><option value="a_receber">A Receber (Previsto)</option><option value="realizado">Recebido (Realizado)</option></> : <><option value="a_pagar">A Pagar (Previsto)</option><option value="pago">Pago (Realizado)</option><option value="previsto">Previsto</option></>}
               </select></div>
@@ -1145,7 +1158,7 @@ export default function Page() {
                     <h4 className="text-xs font-bold mb-2 text-zinc-700">Rateio por Filiais</h4>
                     {form.rateio_filiais.map((rf, idx) => (
                       <div key={idx} className="flex gap-2 mb-2 items-center">
-                        <select value={rf.empresa} onChange={(e) => { const newR = [...form.rateio_filiais]; newR[idx].empresa = e.target.value; setForm({...form, rateio_filiais: newR})}} className="border p-2 rounded-lg text-xs flex-1"><option>BOAH MATRIZ</option><option>SDB</option><option>VILAS</option><option>PASEO</option><option>BARRA</option><option>SOLAR (ADM)</option></select>
+                        <select value={rf.empresa} onChange={(e) => { const newR = [...form.rateio_filiais]; newR[idx].empresa = e.target.value; setForm({...form, rateio_filiais: newR})}} className="border p-2 rounded-lg text-xs flex-1"><option>BOAH MATRIZ</option><option>HORTO</option><option>SDB</option><option>VILAS</option><option>PASEO</option><option>BARRA</option><option>SOLAR (ADM)</option></select>
                         <input type="number" placeholder="R$ 0,00" value={rf.valor||''} onChange={(e) => { const newR = [...form.rateio_filiais]; newR[idx].valor = Number(e.target.value); setForm({...form, rateio_filiais: newR})}} className="border p-2 rounded-lg text-xs w-24"/>
                         <button onClick={()=>{ const newR = [...form.rateio_filiais]; newR.splice(idx,1); setForm({...form, rateio_filiais: newR})}} className="text-red-500 hover:bg-red-50 p-1 rounded"><Trash2 className="w-4 h-4"/></button>
                       </div>
