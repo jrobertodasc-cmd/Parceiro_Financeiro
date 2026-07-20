@@ -154,26 +154,68 @@ export default function Page() {
     return { aPagar, aReceber, realizadas, trMes, trGeral: tr };
   }, [transactions, mesFiltro, empresaFiltro]);
 
+  // ============================================
+  // PLANO DE CONTAS & LÓGICA GERENCIAL DRE
+  // ============================================
   const totals = useMemo(()=> {
     const { trMes, realizadas, aPagar: cAPagar, aReceber: cAReceber, trGeral } = contas;
-    const entradas = trMes.filter(t=>t.tipo==='Entrada').reduce((s,t)=>s+Number(t.valor),0);
-    const saidas = trMes.filter(t=>t.tipo==='Saída').reduce((s,t)=>s+Number(t.valor),0);
+
     const entradasRealizadas = realizadas.filter(t=>t.tipo==='Entrada').reduce((s,t)=>s+Number(t.valor),0);
     const saidasRealizadas = realizadas.filter(t=>t.tipo==='Saída').reduce((s,t)=>s+Number(t.valor),0);
     const aReceber = cAReceber.reduce((s,t)=>s+Number(t.valor),0);
     const aPagar = cAPagar.reduce((s,t)=>s+Number(t.valor),0);
-    const porCategoria = trMes.filter(t=>t.tipo==='Saída').reduce((acc: any, t)=>{ acc[t.categoria] = (acc[t.categoria]||0)+Number(t.valor); return acc; },{});
-    const maiorVilao = Object.entries(porCategoria).sort((a:any,b:any)=>b[1]-a[1])[0];
-    let fixo = porCategoria['Fixo']||0; let variavel = porCategoria['Variável']||0; let fornecedor = porCategoria['Fornecedor']||0; let imposto = porCategoria['Imposto']||0;
-    Object.keys(porCategoria).forEach(cat => {
-      const val = porCategoria[cat];
-      if (cat.startsWith('11') || cat.startsWith('21')) fixo += val;
-      else if (cat.startsWith('3 -') || cat.startsWith('223')) imposto += val;
-      else if (cat.startsWith('121')) fornecedor += val;
-      else if (cat.startsWith('12') || cat.startsWith('22') || cat.startsWith('4 -') || cat.startsWith('5 -')) variavel += val;
-    });
-    const lucroLiquido = entradas - saidas;
     
+    // Motor de Classificação (Plano de Contas Gerencial)
+    let receitaBruta = 0;
+    let deducoes = 0;
+    let cmvCsv = 0;
+    let despOperacionais = 0;
+    let resFinanceiro = 0;
+    let impostosLucro = 0;
+    let depreciacao = 0; 
+
+    const porCategoria = trMes.filter(t=>t.tipo==='Saída').reduce((acc: any, t)=>{ acc[t.categoria] = (acc[t.categoria]||0)+Number(t.valor); return acc; },{});
+
+    trMes.forEach(t => {
+      const val = Number(t.valor);
+      const cat = (t.categoria || '').toUpperCase();
+      const desc = (t.descricao || '').toUpperCase();
+      
+      if (t.tipo === 'Entrada') {
+        receitaBruta += val; 
+      } else if (t.tipo === 'Saída') {
+        if (cat.startsWith('3 -') || cat.startsWith('223') || cat.includes('IMPOSTO SOBRE VENDA') || cat.includes('SIMPLES NACIONAL')) {
+          deducoes += val;
+        } 
+        else if (cat.startsWith('121') || cat.includes('FORNECEDOR') || cat.includes('TECIDO') || cat.includes('EMBALAGEM') || cat.includes('FRETE')) {
+          cmvCsv += val;
+        }
+        else if (cat.includes('TARIFA') || cat.includes('JUROS') || cat.includes('FINANCEIRO')) {
+          resFinanceiro += val;
+        }
+        else if (desc.includes('IRPJ') || desc.includes('CSLL')) {
+          impostosLucro += val;
+        }
+        else {
+          despOperacionais += val; // Vendas, Admin, Pessoal, Fixos, etc.
+        }
+      }
+    });
+
+    // Lógica Matemática da DRE
+    const receitaLiquida = receitaBruta - deducoes;
+    const lucroBruto = receitaLiquida - cmvCsv;
+    const ebitda = lucroBruto - despOperacionais;
+    const lucroLiquido = ebitda - resFinanceiro - impostosLucro - depreciacao;
+
+    const margemEbitda = receitaLiquida ? (ebitda / receitaLiquida) * 100 : 0;
+    const margemLiquida = receitaLiquida ? (lucroLiquido / receitaLiquida) * 100 : 0;
+    const margemContribuicao = receitaLiquida ? (lucroBruto / receitaLiquida) * 100 : 0;
+    const pontoEquilibrio = margemContribuicao > 0 ? (despOperacionais / (margemContribuicao / 100)) : 0;
+
+    const entradas = trMes.filter(t=>t.tipo==='Entrada').reduce((s,t)=>s+Number(t.valor),0);
+    const saidas = trMes.filter(t=>t.tipo==='Saída').reduce((s,t)=>s+Number(t.valor),0);
+
     const [year, month] = mesFiltro.split('-');
     const endOfMonth = new Date(parseInt(year), parseInt(month), 0).toISOString().slice(0,10);
     const trHistorico = trGeral.filter(t => ((t as any).data_vencimento || t.data) <= endOfMonth);
@@ -191,7 +233,14 @@ export default function Page() {
       .slice(0, 10)
       .map(([nome, valor]) => ({nome, valor}));
 
-    return { entradas, saidas, saldoMes: entradasRealizadas - saidasRealizadas, saldoHistoricoRealizado, impostosProvisao, lucroLiquido, receitaBruta: entradas, margem: entradas ? (lucroLiquido/entradas*100) : 0, maiorVilao: maiorVilao ? maiorVilao[0] : 'Fixo', porCategoria, fixo, variavel, fornecedor, imposto, aReceber, aPagar, lucroBruto: entradas-(fornecedor+variavel), topFornecedores };
+    return { 
+      entradas, saidas, saldoMes: entradasRealizadas - saidasRealizadas, saldoHistoricoRealizado, impostosProvisao, 
+      lucroLiquido, receitaBruta, deducoes, receitaLiquida, cmvCsv, lucroBruto, despOperacionais, ebitda, resFinanceiro, impostosLucro,
+      margemEbitda, margemLiquida, pontoEquilibrio, margem: margemLiquida, 
+      porCategoria, aReceber, aPagar, topFornecedores,
+      // Legacy support for older components
+      fixo: despOperacionais, variavel: cmvCsv, fornecedor: cmvCsv, imposto: deducoes + impostosLucro
+    };
   }, [contas, mesFiltro]);
 
   const chartData = useMemo(()=> {
@@ -220,6 +269,42 @@ export default function Page() {
       return { date: `${d}/${m}`, entrada: v.entrada, saida: v.saida, saldo: acc }; 
     });
   }, [contas, mesFiltro]);
+
+  const trendData = useMemo(()=> {
+    const map: Record<string, {receita:number, deducoes:number, cmv:number, desp:number, resFin:number, imp:number}> = {};
+    
+    transactions.forEach(t => {
+      if (empresaFiltro !== 'TODAS' && (t as any).empresa !== empresaFiltro) return;
+      
+      const dateStr = (t as any).data_vencimento || t.data;
+      if (!dateStr || dateStr.length < 7) return;
+      
+      const month = dateStr.slice(0, 7);
+      if (!map[month]) map[month] = {receita:0, deducoes:0, cmv:0, desp:0, resFin:0, imp:0};
+      
+      const val = Number(t.valor);
+      const cat = (t.categoria || '').toUpperCase();
+      const desc = (t.descricao || '').toUpperCase();
+
+      if (t.tipo === 'Entrada') {
+        map[month].receita += val;
+      } else {
+        if (cat.startsWith('3 -') || cat.startsWith('223') || cat.includes('IMPOSTO SOBRE VENDA') || cat.includes('SIMPLES NACIONAL')) map[month].deducoes += val;
+        else if (cat.startsWith('121') || cat.includes('FORNECEDOR') || cat.includes('TECIDO') || cat.includes('EMBALAGEM') || cat.includes('FRETE')) map[month].cmv += val;
+        else if (cat.includes('TARIFA') || cat.includes('JUROS') || cat.includes('FINANCEIRO')) map[month].resFin += val;
+        else if (desc.includes('IRPJ') || desc.includes('CSLL')) map[month].imp += val;
+        else map[month].desp += val;
+      }
+    });
+
+    return Object.entries(map).sort((a,b)=>a[0].localeCompare(b[0])).slice(-6).map(([mes, v]) => {
+      const recLiq = v.receita - v.deducoes;
+      const ebitda = recLiq - v.cmv - v.desp;
+      const lucro = ebitda - v.resFin - v.imp;
+      const [y, m] = mes.split('-');
+      return { mes: `${m}/${y.slice(2)}`, EBITDA: ebitda, Lucro: lucro };
+    });
+  }, [transactions, empresaFiltro]);
 
   function checkDuplicate(descricao: string, valor: string, data: string) {
     const hash = `${descricao.trim().toLowerCase()}_${Number(valor).toFixed(2)}_${data}`;
@@ -466,26 +551,28 @@ export default function Page() {
         {tab==='dash' && (
           <>
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-              <Card className="p-5"><div className="text-xs text-zinc-500 mb-1">Saldo Realizado</div><div className={`text-xl font-bold ${totals.saldoHistoricoRealizado < 0 ? 'text-red-600' : 'text-zinc-900'}`}>{BRL.format(totals.saldoHistoricoRealizado || 0)}</div><div className="text-[10px] text-zinc-400 mt-1">Entradas - Saídas</div></Card>
-              <Card className="p-5"><div className="text-xs text-zinc-500 mb-1">A Receber</div><div className="text-xl font-bold text-emerald-600">{BRL.format(totals.aReceber || 0)}</div><div className="text-[10px] text-emerald-600 mt-1">{contas.aReceber.length} títulos</div></Card>
-              <Card className="p-5"><div className="text-xs text-zinc-500 mb-1">A Pagar</div><div className="text-xl font-bold text-red-600">{BRL.format(totals.aPagar || 0)}</div><div className="text-[10px] text-red-600 mt-1">{contas.aPagar.length} títulos • Vilão {totals.maiorVilao}</div></Card>
-              <Card className="p-5"><div className="text-xs text-zinc-500 mb-1">Previsto Saldo</div><div className={`text-xl font-bold ${(totals.saldoHistoricoRealizado || 0) + (totals.aReceber || 0) - (totals.aPagar || 0) < 0 ? 'text-red-600' : 'text-violet-600'}`}>{BRL.format((totals.saldoHistoricoRealizado || 0) + (totals.aReceber || 0) - (totals.aPagar || 0))}</div><div className="text-[10px] text-zinc-500 mt-1">Realizado + Futuro</div></Card>
-              <Card className="p-5"><div className="text-xs text-zinc-500 mb-1">Margem</div><div className={`text-xl font-bold ${totals.margem < 0 ? 'text-red-600' : 'text-zinc-900'}`}>{totals.margem.toFixed(1)}%</div><div className="text-[10px] text-zinc-500 mt-1">Lucro Líquido</div></Card>
+              <Card className="p-5"><div className="text-xs text-zinc-500 mb-1">Margem EBITDA</div><div className={`text-xl font-bold ${totals.margemEbitda < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{totals.margemEbitda.toFixed(1)}%</div><div className="text-[10px] text-zinc-400 mt-1">Geração Operacional</div></Card>
+              <Card className="p-5"><div className="text-xs text-zinc-500 mb-1">Margem Líquida</div><div className={`text-xl font-bold ${totals.margemLiquida < 0 ? 'text-red-600' : 'text-zinc-900'}`}>{totals.margemLiquida.toFixed(1)}%</div><div className="text-[10px] text-zinc-400 mt-1">Lucro Final</div></Card>
+              <Card className="p-5"><div className="text-xs text-zinc-500 mb-1">Ponto Equilíbrio</div><div className="text-xl font-bold text-violet-600">{BRL.format(totals.pontoEquilibrio)}</div><div className="text-[10px] text-zinc-400 mt-1">Break-even Mês</div></Card>
+              <Card className="p-5"><div className="text-xs text-zinc-500 mb-1">A Receber</div><div className="text-xl font-bold text-emerald-600">{BRL.format(totals.aReceber || 0)}</div><div className="text-[10px] text-emerald-600 mt-1">{contas.aReceber.length} títulos pendentes</div></Card>
+              <Card className="p-5"><div className="text-xs text-zinc-500 mb-1">A Pagar</div><div className="text-xl font-bold text-red-600">{BRL.format(totals.aPagar || 0)}</div><div className="text-[10px] text-red-600 mt-1">{contas.aPagar.length} títulos pendentes</div></Card>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <Card className="lg:col-span-2 p-6">
-                <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-3">
-                  <h3 className="font-bold text-base">Fluxo de Caixa</h3>
+                 <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-3">
+                  <h3 className="font-bold text-base">Análise de Caixa e DRE</h3>
                   <div className="flex bg-zinc-100 rounded-xl p-1">
                     <button onClick={()=>setFlowView('diario')} className={`px-3 py-1 text-[11px] rounded-lg font-medium ${flowView==='diario' ? 'bg-white shadow-sm' : 'text-zinc-500'}`}>Diário</button>
-                    <button onClick={()=>setFlowView('semanal')} className={`px-3 py-1 text-[11px] rounded-lg font-medium ${flowView==='semanal' ? 'bg-white shadow-sm' : 'text-zinc-500'}`}>Semanal</button>
                     <button onClick={()=>setFlowView('acumulado')} className={`px-3 py-1 text-[11px] rounded-lg font-medium ${flowView==='acumulado' ? 'bg-white shadow-sm' : 'text-zinc-500'}`}>Acumulado</button>
+                    <button onClick={()=>setFlowView('tendencia')} className={`px-3 py-1 text-[11px] rounded-lg font-medium ${flowView==='tendencia' ? 'bg-white shadow-sm text-violet-600' : 'text-zinc-500'}`}>Tendência DRE</button>
                   </div>
                 </div>
                 <div className="h-[320px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    {flowView === 'acumulado' ? (
+                    {flowView === 'tendencia' ? (
+                      <ComposedChart data={trendData}><CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" /><XAxis dataKey="mes" tick={{fontSize:11}} axisLine={false} tickLine={false}/><YAxis tick={{fontSize:11}} axisLine={false} tickLine={false} tickFormatter={(v)=>`R$${(v/1000).toFixed(0)}k`}/><Tooltip content={({active,payload,label}:any)=> active && payload ? (<div className="bg-zinc-900 text-white text-xs p-3 rounded-xl"><div className="font-bold mb-1">{label}</div>{payload.map((p:any)=><div key={p.dataKey} className="flex justify-between gap-4"><span>{p.name}:</span><span className={p.value < 0 ? 'text-red-400' : 'text-emerald-400'}>{BRL.format(p.value)}</span></div>)}</div>) : null }/><Bar dataKey="EBITDA" fill="#10b981" radius={[4,4,0,0]} barSize={20} name="EBITDA"/><Bar dataKey="Lucro" fill="#7c3aed" radius={[4,4,0,0]} barSize={20} name="Lucro Líquido"/></ComposedChart>
+                    ) : flowView === 'acumulado' ? (
                       <AreaChart data={chartData}><CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" /><XAxis dataKey="date" tick={{fontSize:11, fill:'#888'}} axisLine={false} tickLine={false}/><YAxis tick={{fontSize:11, fill:'#888'}} axisLine={false} tickLine={false} tickFormatter={(v)=>`R$${(v/1000).toFixed(0)}k`}/><Tooltip content={({active,payload,label}:any)=> active && payload ? (<div className="bg-zinc-900 text-white text-xs p-3 rounded-xl"><div className="font-bold mb-1">{label}</div>{payload.map((p:any)=><div key={p.dataKey}>{p.name}: {BRL.format(p.value)}</div>)}</div>) : null }/><Area type="monotone" dataKey="saldo" stroke="#7c3aed" fill="#7c3aed" fillOpacity={0.1} strokeWidth={2.5} dot={false}/></AreaChart>
                     ) : (
                       <ComposedChart data={chartData}><CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" /><XAxis dataKey="date" tick={{fontSize:11}} axisLine={false} tickLine={false}/><YAxis tick={{fontSize:11}} axisLine={false} tickLine={false} tickFormatter={(v)=>`R$${(v/1000).toFixed(0)}k`}/><Tooltip content={({active,payload,label}:any)=> active && payload ? (<div className="bg-zinc-900 text-white text-xs p-3 rounded-xl"><div className="font-bold mb-1">{label}</div>{payload.map((p:any)=><div key={p.dataKey} className="flex justify-between gap-4"><span>{p.name}:</span><span>{BRL.format(p.value)}</span></div>)}</div>) : null }/><Bar dataKey="entrada" fill="#10b981" radius={[4,4,0,0]} barSize={12} name="Entrada"/><Bar dataKey="saida" fill="#ef4444" radius={[4,4,0,0]} barSize={12} name="Saída"/><Line type="monotone" dataKey="saldo" stroke="#7c3aed" strokeWidth={2.5} dot={false} strokeDasharray="6 4" name="Saldo"/></ComposedChart>
@@ -506,7 +593,72 @@ export default function Page() {
         )}
 
         {tab==='dre' && (
-          <Card className="p-6"><h2 className="font-bold text-lg mb-4">DRE Gerencial</h2><table className="w-full text-sm"><tbody className="divide-y"><tr className="bg-emerald-50/50"><td className="py-3 px-3 font-bold">Receita Bruta</td><td className="py-3 px-3 text-right font-bold">{BRL.format(totals.receitaBruta)}</td></tr><tr><td className="py-3 px-3 pl-6">(-) Fornecedores</td><td className="py-3 px-3 text-right text-red-600">- {BRL.format(totals.fornecedor)}</td></tr><tr><td className="py-3 px-3 pl-6">(-) Variável</td><td className="py-3 px-3 text-right text-red-600">- {BRL.format(totals.variavel)}</td></tr><tr className="bg-zinc-50 font-semibold"><td className="py-3 px-3">Lucro Bruto</td><td className="py-3 px-3 text-right">{BRL.format(totals.lucroBruto)}</td></tr><tr><td className="py-3 px-3 pl-6">(-) Fixos</td><td className="py-3 px-3 text-right text-red-600">- {BRL.format(totals.fixo)}</td></tr><tr><td className="py-3 px-3 pl-6">(-) Impostos</td><td className="py-3 px-3 text-right text-red-600">- {BRL.format(totals.imposto)}</td></tr><tr className="bg-zinc-900 text-white font-bold"><td className="py-4 px-3 rounded-l-xl">Lucro Líquido</td><td className="py-4 px-3 text-right rounded-r-xl">{BRL.format(totals.lucroLiquido)} ({totals.margem.toFixed(1)}%)</td></tr></tbody></table></Card>
+          <Card className="p-6 max-w-4xl mx-auto">
+            <h2 className="font-bold text-lg mb-4">DRE Gerencial</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-zinc-400 text-xs">
+                    <th className="text-left font-normal py-2">Descrição</th>
+                    <th className="text-right font-normal py-2">Valor</th>
+                    <th className="text-right font-normal py-2 w-20">AV%</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  <tr className="bg-emerald-50/50 print:bg-emerald-50">
+                    <td className="py-2.5 px-3 font-bold text-emerald-900">Receita Bruta</td>
+                    <td className="py-2.5 px-3 text-right font-bold text-emerald-900">{BRL.format(totals.receitaBruta)}</td>
+                    <td className="py-2.5 px-3 text-right text-xs text-emerald-700">{totals.receitaLiquida ? ((totals.receitaBruta/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 px-3 pl-6 text-zinc-600">(-) Deduções (Impostos/Devoluções)</td>
+                    <td className="py-2.5 px-3 text-right text-red-600">- {BRL.format(totals.deducoes)}</td>
+                    <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.deducoes/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+                  </tr>
+                  <tr className="bg-zinc-50 print:bg-zinc-100 font-semibold border-t-2 border-zinc-200">
+                    <td className="py-2.5 px-3">Receita Líquida</td>
+                    <td className="py-2.5 px-3 text-right">{BRL.format(totals.receitaLiquida)}</td>
+                    <td className="py-2.5 px-3 text-right text-xs text-zinc-500">100.0%</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 px-3 pl-6 text-zinc-600">(-) CMV / CSV (Variáveis)</td>
+                    <td className="py-2.5 px-3 text-right text-red-600">- {BRL.format(totals.cmvCsv)}</td>
+                    <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.cmvCsv/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+                  </tr>
+                  <tr className="bg-zinc-50 print:bg-zinc-100 font-semibold border-t-2 border-zinc-200">
+                    <td className="py-2.5 px-3">Lucro Bruto</td>
+                    <td className="py-2.5 px-3 text-right">{BRL.format(totals.lucroBruto)}</td>
+                    <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.lucroBruto/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 px-3 pl-6 text-zinc-600">(-) Despesas Operacionais</td>
+                    <td className="py-2.5 px-3 text-right text-red-600">- {BRL.format(totals.despOperacionais)}</td>
+                    <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.despOperacionais/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+                  </tr>
+                  <tr className="bg-zinc-50 print:bg-zinc-100 font-semibold border-t-2 border-zinc-200 text-violet-900">
+                    <td className="py-2.5 px-3">EBITDA (Geração de Caixa)</td>
+                    <td className="py-2.5 px-3 text-right">{BRL.format(totals.ebitda)}</td>
+                    <td className="py-2.5 px-3 text-right text-xs">{totals.receitaLiquida ? ((totals.ebitda/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 px-3 pl-6 text-zinc-600">(-) Resultado Financeiro</td>
+                    <td className="py-2.5 px-3 text-right text-red-600">- {BRL.format(totals.resFinanceiro)}</td>
+                    <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.resFinanceiro/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 px-3 pl-6 text-zinc-600">(-) Impostos sobre Lucro (IRPJ/CSLL)</td>
+                    <td className="py-2.5 px-3 text-right text-red-600">- {BRL.format(totals.impostosLucro)}</td>
+                    <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.impostosLucro/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+                  </tr>
+                  <tr className="bg-zinc-900 text-white font-bold print:bg-zinc-900 print:text-white border-t-4 border-black">
+                    <td className="py-4 px-3 rounded-l-xl print:rounded-none">Lucro Líquido Final</td>
+                    <td className="py-4 px-3 text-right">{BRL.format(totals.lucroLiquido)}</td>
+                    <td className="py-4 px-3 text-right text-xs rounded-r-xl print:rounded-none">{totals.margemLiquida.toFixed(1)}%</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </Card>
         )}
 
         {tab==='reports' && (
@@ -528,40 +680,69 @@ export default function Page() {
 
             <div className={`grid grid-cols-1 ${reportType === 'geral' ? 'lg:grid-cols-2' : ''} gap-6`}>
               
-              {/* DRE Gerencial - Classic Table */}
+              {/* DRE Gerencial - Advanced Table */}
               {(reportType === 'geral' || reportType === 'dre') && (
                 <Card className={`p-6 ${reportType === 'geral' ? 'col-span-1 lg:col-span-2' : 'col-span-1 max-w-4xl mx-auto w-full'} print:border-none print:shadow-none`}>
                   <h2 className="font-bold text-lg mb-4">DRE Gerencial</h2>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-zinc-400 text-xs">
+                          <th className="text-left font-normal py-2">Descrição</th>
+                          <th className="text-right font-normal py-2">Valor</th>
+                          <th className="text-right font-normal py-2 w-20">AV%</th>
+                        </tr>
+                      </thead>
                       <tbody className="divide-y divide-zinc-100">
                         <tr className="bg-emerald-50/50 print:bg-emerald-50">
-                          <td className="py-3 px-3 font-bold">Receita Bruta</td>
-                          <td className="py-3 px-3 text-right font-bold">{BRL.format(totals.receitaBruta)}</td>
+                          <td className="py-2.5 px-3 font-bold text-emerald-900">Receita Bruta</td>
+                          <td className="py-2.5 px-3 text-right font-bold text-emerald-900">{BRL.format(totals.receitaBruta)}</td>
+                          <td className="py-2.5 px-3 text-right text-xs text-emerald-700">{totals.receitaLiquida ? ((totals.receitaBruta/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
                         </tr>
                         <tr>
-                          <td className="py-3 px-3 pl-6">(-) Fornecedores</td>
-                          <td className="py-3 px-3 text-right text-red-600">- {BRL.format(totals.fornecedor)}</td>
+                          <td className="py-2.5 px-3 pl-6 text-zinc-600">(-) Deduções (Impostos/Devoluções)</td>
+                          <td className="py-2.5 px-3 text-right text-red-600">- {BRL.format(totals.deducoes)}</td>
+                          <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.deducoes/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+                        </tr>
+                        <tr className="bg-zinc-50 print:bg-zinc-100 font-semibold border-t-2 border-zinc-200">
+                          <td className="py-2.5 px-3">Receita Líquida</td>
+                          <td className="py-2.5 px-3 text-right">{BRL.format(totals.receitaLiquida)}</td>
+                          <td className="py-2.5 px-3 text-right text-xs text-zinc-500">100.0%</td>
                         </tr>
                         <tr>
-                          <td className="py-3 px-3 pl-6">(-) Variável</td>
-                          <td className="py-3 px-3 text-right text-red-600">- {BRL.format(totals.variavel)}</td>
+                          <td className="py-2.5 px-3 pl-6 text-zinc-600">(-) CMV / CSV (Variáveis)</td>
+                          <td className="py-2.5 px-3 text-right text-red-600">- {BRL.format(totals.cmvCsv)}</td>
+                          <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.cmvCsv/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
                         </tr>
-                        <tr className="bg-zinc-50 print:bg-zinc-100 font-semibold">
-                          <td className="py-3 px-3">Lucro Bruto</td>
-                          <td className="py-3 px-3 text-right">{BRL.format(totals.lucroBruto)}</td>
-                        </tr>
-                        <tr>
-                          <td className="py-3 px-3 pl-6">(-) Fixos</td>
-                          <td className="py-3 px-3 text-right text-red-600">- {BRL.format(totals.fixo)}</td>
+                        <tr className="bg-zinc-50 print:bg-zinc-100 font-semibold border-t-2 border-zinc-200">
+                          <td className="py-2.5 px-3">Lucro Bruto</td>
+                          <td className="py-2.5 px-3 text-right">{BRL.format(totals.lucroBruto)}</td>
+                          <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.lucroBruto/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
                         </tr>
                         <tr>
-                          <td className="py-3 px-3 pl-6">(-) Impostos</td>
-                          <td className="py-3 px-3 text-right text-red-600">- {BRL.format(totals.imposto)}</td>
+                          <td className="py-2.5 px-3 pl-6 text-zinc-600">(-) Despesas Operacionais</td>
+                          <td className="py-2.5 px-3 text-right text-red-600">- {BRL.format(totals.despOperacionais)}</td>
+                          <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.despOperacionais/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
                         </tr>
-                        <tr className="bg-zinc-900 text-white font-bold print:bg-zinc-900 print:text-white">
-                          <td className="py-4 px-3 rounded-l-xl print:rounded-none">Lucro Líquido</td>
-                          <td className="py-4 px-3 text-right rounded-r-xl print:rounded-none">{BRL.format(totals.lucroLiquido)} ({totals.margem.toFixed(1)}%)</td>
+                        <tr className="bg-zinc-50 print:bg-zinc-100 font-semibold border-t-2 border-zinc-200 text-violet-900">
+                          <td className="py-2.5 px-3">EBITDA (Geração de Caixa)</td>
+                          <td className="py-2.5 px-3 text-right">{BRL.format(totals.ebitda)}</td>
+                          <td className="py-2.5 px-3 text-right text-xs">{totals.receitaLiquida ? ((totals.ebitda/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+                        </tr>
+                        <tr>
+                          <td className="py-2.5 px-3 pl-6 text-zinc-600">(-) Resultado Financeiro</td>
+                          <td className="py-2.5 px-3 text-right text-red-600">- {BRL.format(totals.resFinanceiro)}</td>
+                          <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.resFinanceiro/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+                        </tr>
+                        <tr>
+                          <td className="py-2.5 px-3 pl-6 text-zinc-600">(-) Impostos sobre Lucro (IRPJ/CSLL)</td>
+                          <td className="py-2.5 px-3 text-right text-red-600">- {BRL.format(totals.impostosLucro)}</td>
+                          <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.impostosLucro/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+                        </tr>
+                        <tr className="bg-zinc-900 text-white font-bold print:bg-zinc-900 print:text-white border-t-4 border-black">
+                          <td className="py-4 px-3 rounded-l-xl print:rounded-none">Lucro Líquido Final</td>
+                          <td className="py-4 px-3 text-right">{BRL.format(totals.lucroLiquido)}</td>
+                          <td className="py-4 px-3 text-right text-xs rounded-r-xl print:rounded-none">{totals.margemLiquida.toFixed(1)}%</td>
                         </tr>
                       </tbody>
                     </table>
