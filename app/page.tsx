@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Transaction, supabase } from '@/lib/supabase';
 import { generateMockTransactions } from '@/lib/mock';
 import { classifyWithAI } from '@/lib/classify';
-import { Plus, Trash2, ArrowUpCircle, ArrowDownCircle, Search, Edit2, Pencil, Save, X, Calendar, Upload, BarChart3, Clock, Wallet, Settings, LogOut, Check, Undo2, PieChart, Activity, Layers, Target, BarChart, TrendingUp, Download, TrendingDown, MessageCircle, Sparkles, Send, AlertTriangle, FileSpreadsheet } from 'lucide-react';
+import { Plus, Trash2, ArrowUpCircle, ArrowDownCircle, Search, Edit2, Pencil, Save, X, Calendar, Upload, BarChart3, Clock, Wallet, Settings, LogOut, Check, Undo2, PieChart, Activity, Layers, Target, BarChart, TrendingUp, Download, TrendingDown, MessageCircle, Sparkles, Send, AlertTriangle, FileSpreadsheet, ShoppingCart } from 'lucide-react';
 import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area, AreaChart } from 'recharts';
 import Papa from 'papaparse';
 import { CATEGORIAS } from '@/lib/categorias';
@@ -179,7 +179,18 @@ export default function Page() {
     const saldoHistoricoRealizado = trHistorico.filter(t => ['pago','realizado'].includes((t as any).status || 'realizado')).reduce((acc, t) => acc + (t.tipo==='Entrada' ? Number(t.valor) : -Number(t.valor)), 0);
     const impostosProvisao = trMes.filter(t => t.descricao?.startsWith('GUIA DE IMPOSTO')).reduce((acc, t) => acc + Number(t.valor), 0);
     
-    return { entradas, saidas, saldoMes: entradasRealizadas - saidasRealizadas, saldoHistoricoRealizado, impostosProvisao, lucroLiquido, receitaBruta: entradas, margem: entradas ? (lucroLiquido/entradas*100) : 0, maiorVilao: maiorVilao ? maiorVilao[0] : 'Fixo', porCategoria, fixo, variavel, fornecedor, imposto, aReceber, aPagar, lucroBruto: entradas-(fornecedor+variavel) };
+    const porFornecedor = trMes.filter(t=>t.tipo==='Saída').reduce((acc: any, t)=>{ 
+      let desc = t.descricao.toUpperCase().trim();
+      if (desc.startsWith('GUIA DE IMPOSTO')) desc = 'IMPOSTOS (MUNICIPAL/ESTADUAL/FEDERAL)';
+      acc[desc] = (acc[desc]||0) + Number(t.valor); 
+      return acc; 
+    },{});
+    const topFornecedores = Object.entries(porFornecedor)
+      .sort((a:any, b:any) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([nome, valor]) => ({nome, valor}));
+
+    return { entradas, saidas, saldoMes: entradasRealizadas - saidasRealizadas, saldoHistoricoRealizado, impostosProvisao, lucroLiquido, receitaBruta: entradas, margem: entradas ? (lucroLiquido/entradas*100) : 0, maiorVilao: maiorVilao ? maiorVilao[0] : 'Fixo', porCategoria, fixo, variavel, fornecedor, imposto, aReceber, aPagar, lucroBruto: entradas-(fornecedor+variavel), topFornecedores };
   }, [contas, mesFiltro]);
 
   const chartData = useMemo(()=> {
@@ -498,11 +509,123 @@ export default function Page() {
         )}
 
         {tab==='reports' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <Card className="p-6"><h3 className="font-bold mb-2">Exportar</h3><button onClick={exportCsv} className="w-full bg-zinc-900 text-white py-3 rounded-xl text-sm flex items-center justify-center gap-2"><Download className="w-4 h-4"/> Baixar CSV</button></Card>
-            <Card className="p-6"><h3 className="font-bold mb-2">Resumo</h3><div className="space-y-2 text-xs"><div className="flex justify-between"><span>Receita:</span><b>{BRL.format(totals.receitaBruta)}</b></div><div className="flex justify-between"><span>Despesas:</span><b>{BRL.format(totals.saidas)}</b></div><div className="flex justify-between border-t pt-2"><span>Resultado:</span><b>{BRL.format(totals.lucroLiquido)}</b></div></div><button onClick={()=>window.print()} className="w-full mt-4 border py-3 rounded-xl text-sm">Imprimir PDF</button></Card>
-            <Card className="p-6 border-amber-200 bg-amber-50 text-amber-900"><h3 className="font-bold mb-2 text-amber-900">Provisão Impostos (Guias)</h3><div className="text-2xl font-bold">{BRL.format(totals.impostosProvisao)}</div><div className="text-xs opacity-80 mt-1">Soma de todas as Guias de Impostos Retidos geradas neste mês</div></Card>
-            <Card className="p-6 bg-violet-600 text-white"><h3 className="font-bold mb-2">Saldo Futuro</h3><div className="text-2xl font-bold">{BRL.format((totals.saldoHistoricoRealizado||0) + (totals.aReceber||0) - (totals.aPagar||0))}</div><div className="text-xs opacity-70">Realizado + A Receber - A Pagar</div></Card>
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* DRE Waterfall Visulization */}
+              <Card className="p-6 col-span-1 lg:col-span-2 bg-gradient-to-br from-zinc-900 to-black text-white">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="font-bold text-xl flex items-center gap-2"><TrendingUp className="w-5 h-5 text-emerald-400"/> DRE Visual (Demonstração do Resultado)</h2>
+                  <button onClick={exportCsv} className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-xl text-xs font-medium flex items-center gap-2 transition"><Download className="w-4 h-4"/> Baixar CSV Completo</button>
+                </div>
+                
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex justify-between text-sm mb-1"><span>Receita Bruta</span><span className="font-bold text-emerald-400">{BRL.format(totals.receitaBruta)}</span></div>
+                    <div className="w-full bg-white/10 rounded-full h-3"><div className="bg-emerald-400 h-3 rounded-full" style={{width: '100%'}}></div></div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                    <div className="bg-white/5 p-4 rounded-xl border border-white/10">
+                      <div className="text-xs text-zinc-400 mb-1">(-) Impostos</div>
+                      <div className="font-bold text-red-400">{BRL.format(totals.imposto)}</div>
+                      <div className="text-[10px] mt-1 text-zinc-500">{totals.receitaBruta ? ((totals.imposto/totals.receitaBruta)*100).toFixed(1) : 0}% da Receita</div>
+                    </div>
+                    <div className="bg-white/5 p-4 rounded-xl border border-white/10">
+                      <div className="text-xs text-zinc-400 mb-1">(-) Fornecedores/Variável</div>
+                      <div className="font-bold text-red-400">{BRL.format(totals.fornecedor + totals.variavel)}</div>
+                      <div className="text-[10px] mt-1 text-zinc-500">{totals.receitaBruta ? (((totals.fornecedor + totals.variavel)/totals.receitaBruta)*100).toFixed(1) : 0}% da Receita</div>
+                    </div>
+                    <div className="bg-white/5 p-4 rounded-xl border border-white/10">
+                      <div className="text-xs text-zinc-400 mb-1">(-) Custos Fixos</div>
+                      <div className="font-bold text-red-400">{BRL.format(totals.fixo)}</div>
+                      <div className="text-[10px] mt-1 text-zinc-500">{totals.receitaBruta ? ((totals.fixo/totals.receitaBruta)*100).toFixed(1) : 0}% da Receita</div>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 mt-4 border-t border-white/10 flex items-end justify-between">
+                    <div>
+                      <div className="text-sm text-zinc-400 mb-1">Lucro Líquido Final</div>
+                      <div className="text-3xl font-black text-emerald-400">{BRL.format(totals.lucroLiquido)}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm text-zinc-400 mb-1">Margem de Lucro</div>
+                      <div className="text-2xl font-bold text-white">{totals.margem.toFixed(1)}%</div>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Top 10 Fornecedores */}
+              <Card className="p-6">
+                <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><ShoppingCart className="w-5 h-5 text-violet-600"/> Top 10 Fornecedores</h3>
+                <div className="space-y-4">
+                  {totals.topFornecedores.length === 0 ? (
+                    <div className="text-sm text-zinc-500 text-center py-8">Nenhum pagamento registrado neste mês.</div>
+                  ) : (
+                    totals.topFornecedores.map((forn: any, idx: number) => {
+                      const pct = totals.saidas ? (forn.valor / totals.saidas) * 100 : 0;
+                      return (
+                        <div key={idx}>
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="font-medium text-zinc-700 truncate pr-4">{idx+1}. {forn.nome}</span>
+                            <span className="font-bold whitespace-nowrap">{BRL.format(forn.valor)}</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1 bg-zinc-100 rounded-full h-2 overflow-hidden">
+                              <div className="bg-violet-500 h-2 rounded-full" style={{width: `${Math.min(pct, 100)}%`}}></div>
+                            </div>
+                            <span className="text-[10px] text-zinc-500 font-medium w-8 text-right">{pct.toFixed(1)}%</span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </Card>
+
+              {/* Categorias e Impostos */}
+              <div className="space-y-6">
+                <Card className="p-6">
+                  <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><PieChart className="w-5 h-5 text-amber-500"/> Despesas por Categoria</h3>
+                  <div className="space-y-4">
+                    {Object.entries(totals.porCategoria)
+                      .sort((a:any, b:any) => b[1] - a[1])
+                      .slice(0, 8)
+                      .map(([cat, val]: any, idx) => {
+                        const pct = totals.saidas ? (val / totals.saidas) * 100 : 0;
+                        return (
+                          <div key={idx}>
+                            <div className="flex justify-between text-xs mb-1">
+                              <span className="font-medium text-zinc-700 truncate pr-4">{cat}</span>
+                              <span className="font-bold whitespace-nowrap">{BRL.format(val)}</span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div className="flex-1 bg-zinc-100 rounded-full h-2 overflow-hidden">
+                                <div className="bg-amber-500 h-2 rounded-full" style={{width: `${Math.min(pct, 100)}%`}}></div>
+                              </div>
+                              <span className="text-[10px] text-zinc-500 font-medium w-8 text-right">{pct.toFixed(1)}%</span>
+                            </div>
+                          </div>
+                        );
+                    })}
+                  </div>
+                </Card>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <Card className="p-5 border-amber-200 bg-amber-50 text-amber-900">
+                    <h3 className="font-bold text-xs mb-1 text-amber-900 opacity-80">Provisão Impostos</h3>
+                    <div className="text-xl font-black">{BRL.format(totals.impostosProvisao)}</div>
+                    <div className="text-[10px] mt-1 opacity-70">Total das Guias retidas</div>
+                  </Card>
+                  <Card className="p-5 bg-violet-600 text-white shadow-lg shadow-violet-200">
+                    <h3 className="font-bold text-xs mb-1 opacity-80">Saldo Futuro</h3>
+                    <div className="text-xl font-black">{BRL.format((totals.saldoHistoricoRealizado||0) + (totals.aReceber||0) - (totals.aPagar||0))}</div>
+                    <div className="text-[10px] mt-1 opacity-70">Saldo final projetado</div>
+                  </Card>
+                </div>
+              </div>
+
+            </div>
           </div>
         )}
 
