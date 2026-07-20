@@ -137,7 +137,7 @@ export default function Page() {
   }
 
   const filtered = useMemo(()=> {
-    let tr = transactions.filter(t => t.descricao.toLowerCase().includes(search.toLowerCase()));
+    let tr = transactions.filter(t => (t.descricao || "").toLowerCase().includes(search.toLowerCase()));
     if (empresaFiltro !== 'TODAS') {
       tr = tr.filter(t => t.empresa === empresaFiltro || t.rateio_filiais?.some(r => r.empresa === empresaFiltro));
     }
