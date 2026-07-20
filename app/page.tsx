@@ -251,11 +251,21 @@ export default function Page() {
       .slice(0, 10)
       .map(([nome, valor]) => ({nome, valor}));
 
+    const porFonteReceita = trMes.filter(t=>t.tipo==='Entrada').reduce((acc: any, t)=>{ 
+      let desc = (t.descricao || "").toUpperCase().trim();
+      acc[desc] = (acc[desc]||0) + Number(t.valor); 
+      return acc; 
+    },{});
+    const topFontesReceita = Object.entries(porFonteReceita)
+      .sort((a:any, b:any) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([nome, valor]) => ({nome, valor}));
+
     return { 
       entradas, saidas, saldoMes: entradasRealizadas - saidasRealizadas, saldoHistoricoRealizado, impostosProvisao, 
       lucroLiquido, receitaBruta, deducoes, receitaLiquida, cmvCsv, lucroBruto, despOperacionais, ebitda, resFinanceiro, impostosLucro,
       margemEbitda, margemLiquida, pontoEquilibrio, margem: margemLiquida, 
-      porCategoria, aReceber, aPagar, topFornecedores,
+      porCategoria, aReceber, aPagar, topFornecedores, topFontesReceita,
       dreBreakdown,
       // Legacy support for older components
       fixo: despOperacionais, variavel: cmvCsv, fornecedor: cmvCsv, imposto: deducoes + impostosLucro
@@ -908,8 +918,47 @@ export default function Page() {
                   
                   {reportType === 'receitas' && (
                     <Card className="p-6 print:border-2 print:border-zinc-200 print:shadow-none">
-                      <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Target className="w-5 h-5 text-emerald-600 print:text-zinc-900"/> Receitas Agrupadas</h3>
-                      <div className="text-sm text-zinc-500">A sua receita no momento é centralizada. Para ver a divisão, utilize os filtros de empresa no topo do sistema.</div>
+                      <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Target className="w-5 h-5 text-emerald-600 print:text-zinc-900"/> Principais Fontes de Receita</h3>
+                      
+                      {totals.topFontesReceita.length > 0 ? (
+                        <>
+                          <div className="overflow-x-auto mb-6">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b text-zinc-500">
+                                  <th className="text-left py-2 font-medium">Fonte / Cliente</th>
+                                  <th className="text-right py-2 font-medium">Valor Recebido</th>
+                                  <th className="text-right py-2 font-medium w-16">%</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {totals.topFontesReceita.map((f, i) => (
+                                  <tr key={i} className="border-b border-zinc-100 hover:bg-zinc-50">
+                                    <td className="py-2.5 truncate max-w-[200px] text-zinc-700">{f.nome}</td>
+                                    <td className="py-2.5 text-right font-medium text-emerald-700">{BRL.format(f.valor)}</td>
+                                    <td className="py-2.5 text-right text-xs text-zinc-400">
+                                      {totals.receitaBruta > 0 ? ((f.valor / totals.receitaBruta) * 100).toFixed(1) : 0}%
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                          <div className="h-64 mt-4">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={totals.topFontesReceita.slice(0, 5)} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                                <XAxis type="number" hide />
+                                <YAxis dataKey="nome" type="category" width={120} tick={{ fontSize: 10 }} />
+                                <Tooltip formatter={(value: number) => BRL.format(value)} />
+                                <Bar dataKey="valor" fill="#059669" radius={[0, 4, 4, 0]} barSize={20} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="text-sm text-zinc-500">Nenhuma receita registrada no período.</div>
+                      )}
                     </Card>
                   )}
                 </div>
