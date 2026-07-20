@@ -95,7 +95,7 @@ export default function Page() {
         return;
       }
       if (t.rateio_filiais && t.rateio_filiais.length > 0) {
-        t.rateio_filiais.forEach(rf => {
+        t.rateio_filiais.forEach((rf: any) => {
           flattened.push({ ...baseT, empresa: rf.empresa, categoria: rf.categoria || baseT.categoria, valor: rf.valor });
         });
         return;
@@ -615,7 +615,7 @@ export default function Page() {
 
   async function askAI() {
     if (!aiQuestion.trim()) return; setAiLoading(true);
-    try { const dre = { receitaBruta: totals.receitaBruta, lucroLiquido: totals.lucroLiquido, margem: totals.margem.toFixed(2), maiorVilao: totals.maiorVilao, porCategoria: totals.porCategoria, entradas: totals.entradas, saidas: totals.saidas, aPagar: totals.aPagar, aReceber: totals.aReceber }; const res = await fetch('/api/ask-ai', { method: 'POST', body: JSON.stringify({ question: aiQuestion, dre, transactions: transactions.slice(0,20) }) }); const j = await res.json(); setAiAnswer(j.answer); } catch(e){ setAiAnswer("Erro ao consultar IA."); } setAiLoading(false); setAiQuestion("");
+    try { const dre = { receitaBruta: totals.receitaBruta, lucroLiquido: totals.lucroLiquido, margem: totals.margem.toFixed(2), maiorVilao: (totals as any).maiorVilao, porCategoria: totals.porCategoria, entradas: totals.entradas, saidas: totals.saidas, aPagar: totals.aPagar, aReceber: totals.aReceber }; const res = await fetch('/api/ask-ai', { method: 'POST', body: JSON.stringify({ question: aiQuestion, dre, transactions: transactions.slice(0,20) }) }); const j = await res.json(); setAiAnswer(j.answer); } catch(e){ setAiAnswer("Erro ao consultar IA."); } setAiLoading(false); setAiQuestion("");
   }
 
   async function handleLogin(e: React.FormEvent) {
@@ -908,7 +908,7 @@ export default function Page() {
                               <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
                           </Pie>
-                          <Tooltip formatter={(value: number) => BRL.format(value)} />
+                          <Tooltip formatter={(value: any) => BRL.format(value as number)} />
                           <Legend />
                         </PieChart>
                       </ResponsiveContainer>
@@ -929,7 +929,7 @@ export default function Page() {
                           <CartesianGrid strokeDasharray="3 3" opacity={0.2} vertical={false} />
                           <XAxis dataKey="name" tick={{fontSize: 10}} interval={0} angle={-15} textAnchor="end" height={60} />
                           <YAxis tickFormatter={(val) => `R$${(val/1000).toFixed(0)}k`} width={50} tick={{fontSize: 10}} />
-                          <Tooltip formatter={(value: number) => BRL.format(value)} cursor={{fill: '#f4f4f5'}} />
+                          <Tooltip formatter={(value: any) => BRL.format(value as number)} cursor={{fill: '#f4f4f5'}} />
                           <Bar dataKey="value" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
@@ -965,9 +965,9 @@ export default function Page() {
                                 {totals.topFontesReceita.map((f, i) => (
                                   <tr key={i} className="border-b border-zinc-100 hover:bg-zinc-50">
                                     <td className="py-2.5 truncate max-w-[200px] text-zinc-700">{f.nome}</td>
-                                    <td className="py-2.5 text-right font-medium text-emerald-700">{BRL.format(f.valor)}</td>
+                                    <td className="py-2.5 text-right font-medium text-emerald-700">{BRL.format(f.valor as number)}</td>
                                     <td className="py-2.5 text-right text-xs text-zinc-400">
-                                      {totals.receitaBruta > 0 ? ((f.valor / totals.receitaBruta) * 100).toFixed(1) : 0}%
+                                      {totals.receitaBruta > 0 ? (((f.valor as number) / totals.receitaBruta) * 100).toFixed(1) : 0}%
                                     </td>
                                   </tr>
                                 ))}
@@ -980,7 +980,7 @@ export default function Page() {
                                 <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                                 <XAxis type="number" hide />
                                 <YAxis dataKey="nome" type="category" width={120} tick={{ fontSize: 10 }} tickFormatter={(val: string) => val.length > 20 ? val.substring(0,20) + '...' : val} />
-                                <Tooltip formatter={(value: number) => BRL.format(value)} />
+                                <Tooltip formatter={(value: any) => BRL.format(value as number)} />
                                 <Bar dataKey="valor" fill="#059669" radius={[0, 4, 4, 0]} barSize={20} />
                               </BarChart>
                             </ResponsiveContainer>
