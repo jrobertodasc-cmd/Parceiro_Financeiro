@@ -118,8 +118,9 @@ export default function Page() {
     const map = new Map<string, string>();
     const sorted = [...transactions].sort((a,b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
     sorted.forEach(t => {
-      if (!map.has(t.descricao) && t.descricao.trim()) {
-        map.set(t.descricao.trim(), t.categoria);
+      const desc = t.descricao || "";
+      if (!map.has(desc) && desc.trim()) {
+        map.set(desc.trim(), t.categoria);
       }
     });
     return Array.from(map.entries()).map(([desc, cat]) => ({ desc, cat }));
@@ -240,7 +241,7 @@ export default function Page() {
     const impostosProvisao = trMes.filter(t => t.descricao?.startsWith('GUIA DE IMPOSTO')).reduce((acc, t) => acc + Number(t.valor), 0);
     
     const porFornecedor = trMes.filter(t=>t.tipo==='Saída').reduce((acc: any, t)=>{ 
-      let desc = t.descricao.toUpperCase().trim();
+      let desc = (t.descricao || "").toUpperCase().trim();
       if (desc.startsWith('GUIA DE IMPOSTO')) desc = 'IMPOSTOS (MUNICIPAL/ESTADUAL/FEDERAL)';
       acc[desc] = (acc[desc]||0) + Number(t.valor); 
       return acc; 
@@ -325,8 +326,9 @@ export default function Page() {
   }, [transactions, empresaFiltro]);
 
   function checkDuplicate(descricao: string, valor: string, data: string) {
-    const hash = `${descricao.trim().toLowerCase()}_${Number(valor).toFixed(2)}_${data}`;
-    const exists = transactions.find(t=> (t as any).hash_dedup === hash || (t.descricao.toLowerCase()===descricao.toLowerCase() && Number(t.valor)===Number(valor) && (t as any).data_vencimento===data));
+    const desc = descricao || "";
+    const hash = `${desc.trim().toLowerCase()}_${Number(valor).toFixed(2)}_${data}`;
+    const exists = transactions.find(t=> (t as any).hash_dedup === hash || ((t.descricao || "").toLowerCase()===desc.toLowerCase() && Number(t.valor)===Number(valor) && (t as any).data_vencimento===data));
     if (exists) { setDupWarning(`⚠️ DUPLICADO! Já existe: ${exists.descricao} - ${BRL.format(Number(exists.valor))} em ${exists.data}. Não pague 2x!`); return true; }
     setDupWarning(""); return false;
   }
