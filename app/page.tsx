@@ -400,17 +400,25 @@ export default function Page() {
         const novas: any[] = [];
         const qty = form.recorrente ? form.recorrente_meses : 1;
         for (let i=0; i<qty; i++) {
-          let vDate = new Date(form.vencimento);
-          if (isNaN(vDate.getTime())) vDate = new Date();
-          vDate.setMonth(vDate.getMonth() + i);
-          let novaData = vDate.toISOString().slice(0,10);
+          let year = parseInt(form.vencimento.slice(0,4)) || new Date().getFullYear();
+          let month = (parseInt(form.vencimento.slice(5,7)) || (new Date().getMonth() + 1)) - 1;
+          let day = parseInt(form.vencimento.slice(8,10)) || new Date().getDate();
+          
+          month += i;
+          year += Math.floor(month / 12);
+          month = month % 12;
+          
+          let lastDayOfMonth = new Date(year, month + 1, 0).getDate();
+          let validDay = day > lastDayOfMonth ? lastDayOfMonth : day;
+          
+          let novaData = `${year}-${String(month+1).padStart(2,'0')}-${String(validDay).padStart(2,'0')}`;
           
           const isSaida = form.tipo === 'Saída';
           const iss = Number(form.impostos || 0);
           const fed = Number(form.impostos_federais || 0);
           const netValor = isSaida ? (Number(form.valor) - iss - fed) : Number(form.valor);
 
-          novas.push({ id: generateUUID(), data: novaData, descricao: form.descricao.toUpperCase() + (form.recorrente && i>0 ? ` (${i+1}/${form.recorrente_meses})` : ''), categoria: form.categoria, tipo: form.tipo, valor: netValor, status: i===0 ? form.status : (form.tipo==='Entrada' ? 'a_receber' : 'a_pagar'), data_vencimento: novaData, observacao: form.observacao, itens: form.itens, impostos: form.impostos ? Number(form.impostos) : null, empresa: form.empresa, recorrente: form.recorrente, comprovante_url: urlComprovante });
+          novas.push({ id: generateUUID(), data: novaData, descricao: form.descricao.toUpperCase() + (form.recorrente && qty>1 ? ` (${i+1}/${qty})` : ''), categoria: form.categoria, tipo: form.tipo, valor: netValor, status: i===0 ? form.status : (form.tipo==='Entrada' ? 'a_receber' : 'a_pagar'), data_vencimento: novaData, observacao: form.observacao, itens: form.itens, impostos: form.impostos ? Number(form.impostos) : null, empresa: form.empresa, recorrente: form.recorrente, rateio_filiais: form.rateio_filiais, rateio_categorias: form.rateio_categorias, comprovante_url: urlComprovante });
           
           if (form.tipo === 'Saída') {
             if (form.impostos && Number(form.impostos) > 0) {
