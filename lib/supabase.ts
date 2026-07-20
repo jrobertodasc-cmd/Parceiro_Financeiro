@@ -22,6 +22,8 @@ export type Transaction = {
   empresa?: string;
   recorrente?: boolean;
   comprovante_url?: string;
+  rateio_filiais?: { empresa: string; valor: number }[];
+  rateio_categorias?: { categoria: string; valor: number }[];
   created_at?: string;
 }
 

@@ -38,7 +38,8 @@ export default function Page() {
   const [budgets, setBudgets] = useState<any[]>([]);
   const [budgetForm, setBudgetForm] = useState({ tipo: 'Despesa', referencia: '21701 - Comunicação/Mídia Digital - Despesas Operacionais/Fecebook/Email/Mailship/Agencia/Programas e apps', valor: '' });
   const [flowView, setFlowView] = useState<'diario'|'semanal'|'acumulado'>('diario');
-  const [form, setForm] = useState({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: "Saída" as any, categoria: "Fornecedor" as any, status: "a_pagar" as any, observacao: "", itens: "", impostos: "", impostos_federais: "", empresa: "BOAH MATRIZ", recorrente: false });
+  const [form, setForm] = useState({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: "Saída" as any, categoria: "Fornecedor" as any, status: "a_pagar" as any, observacao: "", itens: "", impostos: "", impostos_federais: "", empresa: "BOAH MATRIZ", recorrente: false, rateio_filiais: [] as {empresa:string, valor:number}[], rateio_categorias: [] as {categoria:string, valor:number}[] });
+  const [showRateio, setShowRateio] = useState(false);
   const [comprovanteFile, setComprovanteFile] = useState<File|null>(null);
   const [csvPreview, setCsvPreview] = useState<Transaction[]>([]);
   const [mesFiltro, setMesFiltro] = useState<string>(new Date().toISOString().slice(0,7));
@@ -77,10 +78,71 @@ export default function Page() {
     }
   }, [fetchData]);
 
-  const filtered = useMemo(()=> transactions.filter(t => t.descricao.toLowerCase().includes(search.toLowerCase())).slice(0,50), [transactions, search]);
+  const flattenTransactions = useCallback((list: Transaction[]) => {
+    const flattened: Transaction[] = [];
+    list.forEach(t => {
+      let baseT = { ...t };
+      if ((!t.rateio_filiais || t.rateio_filiais.length === 0) && (!t.rateio_categorias || t.rateio_categorias.length === 0)) {
+        flattened.push(baseT);
+        return;
+      }
+      if (t.rateio_filiais && t.rateio_filiais.length > 0 && (!t.rateio_categorias || t.rateio_categorias.length === 0)) {
+        t.rateio_filiais.forEach(rf => {
+          flattened.push({ ...baseT, empresa: rf.empresa, valor: rf.valor });
+        });
+        return;
+      }
+      if (t.rateio_categorias && t.rateio_categorias.length > 0 && (!t.rateio_filiais || t.rateio_filiais.length === 0)) {
+        t.rateio_categorias.forEach(rc => {
+          flattened.push({ ...baseT, categoria: rc.categoria as any, valor: rc.valor });
+        });
+        return;
+      }
+      if (t.rateio_filiais && t.rateio_categorias && t.rateio_filiais.length > 0 && t.rateio_categorias.length > 0) {
+        const totalCat = t.rateio_categorias.reduce((s,c)=>s+c.valor, 0);
+        t.rateio_filiais.forEach(rf => {
+          t.rateio_categorias!.forEach(rc => {
+            const propCat = totalCat > 0 ? rc.valor / totalCat : 0;
+            const virtualValor = rf.valor * propCat;
+            flattened.push({ ...baseT, empresa: rf.empresa, categoria: rc.categoria as any, valor: virtualValor });
+          });
+        });
+      }
+    });
+    return flattened;
+  }, []);
+
+  const suggestions = useMemo(() => {
+    const map = new Map<string, string>();
+    const sorted = [...transactions].sort((a,b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+    sorted.forEach(t => {
+      if (!map.has(t.descricao) && t.descricao.trim()) {
+        map.set(t.descricao.trim(), t.categoria);
+      }
+    });
+    return Array.from(map.entries()).map(([desc, cat]) => ({ desc, cat }));
+  }, [transactions]);
+
+  function handleDescricaoChange(e: any) {
+    const val = e.target.value;
+    const match = suggestions.find(s => s.desc.toUpperCase() === val.toUpperCase());
+    if (match) {
+      setForm({...form, descricao: val, categoria: match.cat as any});
+    } else {
+      setForm({...form, descricao: val});
+    }
+  }
+
+  const filtered = useMemo(()=> {
+    let tr = transactions.filter(t => t.descricao.toLowerCase().includes(search.toLowerCase()));
+    if (empresaFiltro !== 'TODAS') {
+      tr = tr.filter(t => t.empresa === empresaFiltro || t.rateio_filiais?.some(r => r.empresa === empresaFiltro));
+    }
+    return tr.slice(0,50);
+  }, [transactions, search, empresaFiltro]);
 
   const contas = useMemo(()=>{
-    let tr = transactions;
+    let tr = flattenTransactions(transactions);
     if (empresaFiltro !== 'TODAS') tr = tr.filter(t => (t as any).empresa === empresaFiltro);
     
     const trMes = tr.filter(t => (t.data || '').startsWith(mesFiltro) || ((t as any).data_vencimento || '').startsWith(mesFiltro));
@@ -220,7 +282,8 @@ export default function Page() {
         setTransactions([...novas, ...transactions]); setShowModal(false);
         try { await fetch('/api/transactions', { method: 'POST', body: JSON.stringify(novas) }); } catch(e){}
       }
-      setForm({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: modalMode==='receita' ? 'Entrada' : 'Saída', categoria: modalMode==='receita' ? 'Venda' : 'Fornecedor', status: modalMode==='receita' ? 'a_receber' : 'a_pagar', observacao: "", itens: "", impostos: "", impostos_federais: "", empresa: "BOAH MATRIZ", recorrente: false });
+      setForm({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: modalMode==='receita' ? 'Entrada' : 'Saída', categoria: modalMode==='receita' ? 'Venda' : 'Fornecedor', status: modalMode==='receita' ? 'a_receber' : 'a_pagar', observacao: "", itens: "", impostos: "", impostos_federais: "", empresa: "BOAH MATRIZ", recorrente: false, rateio_filiais: [], rateio_categorias: [] });
+      setShowRateio(false);
     } catch (err: any) {
       alert("Erro ao salvar: " + err.message);
       console.error(err);
@@ -249,7 +312,8 @@ export default function Page() {
   }
 
   function editar(t: any) {
-    setForm({ descricao: t.descricao, valor: String(t.valor), data: t.data.slice(0,10), vencimento: (t.data_vencimento||t.data).slice(0,10), tipo: t.tipo, categoria: t.categoria, status: t.status||'realizado', observacao: t.observacao||'', itens: t.itens||'', impostos: t.impostos ? String(t.impostos) : '', impostos_federais: '', empresa: t.empresa || 'BOAH MATRIZ', recorrente: t.recorrente || false });
+    setForm({ descricao: t.descricao, valor: String(t.valor), data: t.data.slice(0,10), vencimento: (t.data_vencimento||t.data).slice(0,10), tipo: t.tipo, categoria: t.categoria, status: t.status||'realizado', observacao: t.observacao||'', itens: t.itens||'', impostos: t.impostos ? String(t.impostos) : '', impostos_federais: '', empresa: t.empresa || 'BOAH MATRIZ', recorrente: t.recorrente || false, rateio_filiais: t.rateio_filiais || [], rateio_categorias: t.rateio_categorias || [] });
+    if (t.rateio_filiais?.length > 0 || t.rateio_categorias?.length > 0) setShowRateio(true); else setShowRateio(false);
     setEditingId(t.id);
     setModalMode(t.tipo === 'Entrada' ? 'receita' : 'despesa');
     setShowModal(true);
@@ -534,7 +598,10 @@ export default function Page() {
 
             <div>
               <label className="text-[11px] text-zinc-500">Descrição / Título do Lançamento</label>
-              <input value={form.descricao} onChange={e=>setForm({...form, descricao: e.target.value})} onBlur={e=>checkDuplicate(e.target.value, form.valor, form.vencimento)} placeholder={modalMode==='receita' ? "Ex: PIX CLIENTE LOJA SILVA" : "Ex: FORNECEDOR ATACADÃO"} className="w-full border rounded-xl p-3 text-sm"/>
+              <input list="desc-suggestions" value={form.descricao} onChange={handleDescricaoChange} onBlur={e=>checkDuplicate(e.target.value, form.valor, form.vencimento)} placeholder={modalMode==='receita' ? "Ex: PIX CLIENTE LOJA SILVA" : "Ex: FORNECEDOR ATACADÃO"} className="w-full border rounded-xl p-3 text-sm"/>
+              <datalist id="desc-suggestions">
+                {suggestions.map(s => <option key={s.desc} value={s.desc} />)}
+              </datalist>
             </div>
             {dupWarning && <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex gap-2"><AlertTriangle className="w-4 h-4 shrink-0"/>{dupWarning}</div>}
             
@@ -579,8 +646,40 @@ export default function Page() {
 
             <div className="flex flex-col md:flex-row gap-3 items-center">
               <input value={form.observacao} onChange={e=>setForm({...form, observacao: e.target.value})} placeholder="Observação / Nº Boleto (opcional)" className="w-full md:flex-1 border rounded-xl p-3 text-sm"/>
-              <label className="w-full md:w-auto flex items-center justify-center gap-2 text-sm text-zinc-600 bg-zinc-50 px-4 py-3 rounded-xl border cursor-pointer hover:bg-zinc-100 transition"><input type="file" className="hidden" onChange={e=>setComprovanteFile(e.target.files?.[0]||null)}/> 📎 {comprovanteFile ? comprovanteFile.name : 'Anexar Recibo'}</label>
+              <label className="w-full md:w-auto flex items-center justify-center gap-2 text-sm text-zinc-600 bg-zinc-50 px-4 py-3 rounded-xl border cursor-pointer hover:bg-zinc-100 transition"><input type="file" className="hidden" onChange={e=>setComprovanteFile(e.target.files?.[0]||null)}/> 📸 {comprovanteFile ? comprovanteFile.name : 'Anexar Recibo'}</label>
               <label className="w-full md:w-auto flex items-center justify-center gap-2 text-sm text-zinc-600 bg-zinc-50 px-4 py-3 rounded-xl border cursor-pointer hover:bg-zinc-100 transition"><input type="checkbox" checked={form.recorrente} onChange={e=>setForm({...form, recorrente: e.target.checked})} className="w-4 h-4 rounded text-violet-600"/> Repetir Mensalmente</label>
+            </div>
+
+            <div className="border-t pt-2">
+              <button onClick={()=>setShowRateio(!showRateio)} className="text-xs font-bold text-violet-600 hover:underline">
+                {showRateio ? '- Esconder Rateio Avançado' : '+ Adicionar Rateio Avançado (Múltiplas Filiais ou Categorias)'}
+              </button>
+              {showRateio && (
+                <div className="mt-3 space-y-4 bg-zinc-50 p-4 rounded-xl border">
+                  <div>
+                    <h4 className="text-xs font-bold mb-2 text-zinc-700">Rateio por Filiais</h4>
+                    {form.rateio_filiais.map((rf, idx) => (
+                      <div key={idx} className="flex gap-2 mb-2 items-center">
+                        <select value={rf.empresa} onChange={(e) => { const newR = [...form.rateio_filiais]; newR[idx].empresa = e.target.value; setForm({...form, rateio_filiais: newR})}} className="border p-2 rounded-lg text-xs flex-1"><option>BOAH MATRIZ</option><option>SDB</option><option>VILAS</option><option>PASEO</option><option>BARRA</option><option>SOLAR (ADM)</option></select>
+                        <input type="number" placeholder="R$ 0,00" value={rf.valor||''} onChange={(e) => { const newR = [...form.rateio_filiais]; newR[idx].valor = Number(e.target.value); setForm({...form, rateio_filiais: newR})}} className="border p-2 rounded-lg text-xs w-24"/>
+                        <button onClick={()=>{ const newR = [...form.rateio_filiais]; newR.splice(idx,1); setForm({...form, rateio_filiais: newR})}} className="text-red-500 hover:bg-red-50 p-1 rounded"><Trash2 className="w-4 h-4"/></button>
+                      </div>
+                    ))}
+                    <button onClick={()=>setForm({...form, rateio_filiais: [...form.rateio_filiais, {empresa:'BOAH MATRIZ', valor:0}]})} className="text-[10px] bg-zinc-200 px-2 py-1 rounded">Adicionar Filial</button>
+                  </div>
+                  <div className="border-t pt-3">
+                    <h4 className="text-xs font-bold mb-2 text-zinc-700">Rateio Contábil (Categorias)</h4>
+                    {form.rateio_categorias.map((rc, idx) => (
+                      <div key={idx} className="flex gap-2 mb-2 items-center">
+                        <input list="categorias-list" value={rc.categoria} onChange={(e) => { const newR = [...form.rateio_categorias]; newR[idx].categoria = e.target.value; setForm({...form, rateio_categorias: newR})}} placeholder="Categoria..." className="border p-2 rounded-lg text-xs flex-1"/>
+                        <input type="number" placeholder="R$ 0,00" value={rc.valor||''} onChange={(e) => { const newR = [...form.rateio_categorias]; newR[idx].valor = Number(e.target.value); setForm({...form, rateio_categorias: newR})}} className="border p-2 rounded-lg text-xs w-24"/>
+                        <button onClick={()=>{ const newR = [...form.rateio_categorias]; newR.splice(idx,1); setForm({...form, rateio_categorias: newR})}} className="text-red-500 hover:bg-red-50 p-1 rounded"><Trash2 className="w-4 h-4"/></button>
+                      </div>
+                    ))}
+                    <button onClick={()=>setForm({...form, rateio_categorias: [...form.rateio_categorias, {categoria:'', valor:0}]})} className="text-[10px] bg-zinc-200 px-2 py-1 rounded">Adicionar Categoria</button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2 pt-2"><button onClick={()=>setShowModal(false)} className="flex-1 border py-3 rounded-xl text-sm">Cancelar</button><button onClick={handleAdd} className={`flex-1 py-3 rounded-xl text-sm font-bold text-white ${modalMode==='receita' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-zinc-900 hover:bg-black'}`}>{modalMode==='receita' ? 'Salvar Receita' : 'Salvar Despesa'}</button></div>
