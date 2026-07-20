@@ -949,7 +949,7 @@ export default function Page() {
                               <BarChart data={totals.topFontesReceita.slice(0, 5)} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                                 <XAxis type="number" hide />
-                                <YAxis dataKey="nome" type="category" width={120} tick={{ fontSize: 10 }} />
+                                <YAxis dataKey="nome" type="category" width={120} tick={{ fontSize: 10 }} tickFormatter={(val: string) => val.length > 20 ? val.substring(0,20) + '...' : val} />
                                 <Tooltip formatter={(value: number) => BRL.format(value)} />
                                 <Bar dataKey="valor" fill="#059669" radius={[0, 4, 4, 0]} barSize={20} />
                               </BarChart>
