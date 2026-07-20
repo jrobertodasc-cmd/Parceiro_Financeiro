@@ -4,8 +4,8 @@ import { Card } from '@/components/ui/card';
 import { Transaction, supabase } from '@/lib/supabase';
 import { generateMockTransactions } from '@/lib/mock';
 import { classifyWithAI } from '@/lib/classify';
-import { Plus, Trash2, ArrowUpCircle, ArrowDownCircle, Search, Edit2, Pencil, Save, X, Calendar, Upload, BarChart3, Clock, Wallet, Settings, LogOut, Check, Undo2, PieChart, Activity, Layers, Target, BarChart, TrendingUp, Download, TrendingDown, MessageCircle, Sparkles, Send, AlertTriangle, FileSpreadsheet, ShoppingCart, ChevronDown, ChevronRight } from 'lucide-react';
-import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area, AreaChart } from 'recharts';
+import { Plus, Trash2, ArrowUpCircle, ArrowDownCircle, Search, Edit2, Pencil, Save, X, Calendar, Upload, BarChart3, Clock, Wallet, Settings, LogOut, Check, Undo2, PieChart as PieChartIcon, Activity, Layers, Target, BarChart as BarChartIcon, TrendingUp, Download, TrendingDown, MessageCircle, Sparkles, Send, AlertTriangle, FileSpreadsheet, ShoppingCart, ChevronDown, ChevronRight } from 'lucide-react';
+import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area, AreaChart, PieChart, Pie, Cell, Legend } from 'recharts';
 import Papa from 'papaparse';
 import { CATEGORIAS } from '@/lib/categorias';
 
@@ -763,6 +763,64 @@ export default function Page() {
                 </Card>
               )}
 
+              {/* GRÁFICOS DO DRE */}
+              {(reportType === 'geral' || reportType === 'dre') && (
+                <div className="col-span-1 lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6 print:hidden">
+                  <Card className="p-6 flex flex-col justify-center items-center">
+                    <h3 className="font-bold text-sm mb-2 text-zinc-600">Composição da Receita (Saídas vs Lucro)</h3>
+                    <div className="h-64 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={[
+                              { name: 'CMV/CSV', value: totals.cmvCsv, color: '#f87171' },
+                              { name: 'Desp. Operac.', value: totals.despOperacionais, color: '#fb923c' },
+                              { name: 'Financeiro', value: totals.resFinanceiro, color: '#fbbf24' },
+                              { name: 'Impostos', value: totals.impostosLucro, color: '#a78bfa' },
+                              { name: 'Lucro Líquido', value: totals.lucroLiquido > 0 ? totals.lucroLiquido : 0, color: '#34d399' }
+                            ].filter(i => i.value > 0)}
+                            cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={2} dataKey="value"
+                          >
+                            { [
+                              { name: 'CMV/CSV', value: totals.cmvCsv, color: '#f87171' },
+                              { name: 'Desp. Operac.', value: totals.despOperacionais, color: '#fb923c' },
+                              { name: 'Financeiro', value: totals.resFinanceiro, color: '#fbbf24' },
+                              { name: 'Impostos', value: totals.impostosLucro, color: '#a78bfa' },
+                              { name: 'Lucro Líquido', value: totals.lucroLiquido > 0 ? totals.lucroLiquido : 0, color: '#34d399' }
+                            ].filter(i => i.value > 0).map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip formatter={(value: number) => BRL.format(value)} />
+                          <Legend />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </Card>
+                  
+                  <Card className="p-6 flex flex-col justify-center items-center">
+                    <h3 className="font-bold text-sm mb-2 text-zinc-600">Top 5 Despesas por Categoria</h3>
+                    <div className="h-64 w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart
+                          data={Object.entries(totals.porCategoria)
+                            .sort((a: any, b: any) => b[1] - a[1])
+                            .slice(0, 5)
+                            .map(([name, value]) => ({ name: name.substring(0, 15), value }))}
+                          margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" opacity={0.2} vertical={false} />
+                          <XAxis dataKey="name" tick={{fontSize: 10}} interval={0} angle={-15} textAnchor="end" height={60} />
+                          <YAxis tickFormatter={(val) => `R$${(val/1000).toFixed(0)}k`} width={50} tick={{fontSize: 10}} />
+                          <Tooltip formatter={(value: number) => BRL.format(value)} cursor={{fill: '#f4f4f5'}} />
+                          <Bar dataKey="value" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </Card>
+                </div>
+              )}
+
               {/* RECEITAS */}
               {reportType === 'receitas' && (
                 <div className={`space-y-6 ${reportType === 'receitas' ? 'col-span-1 max-w-4xl mx-auto w-full' : ''}`}>
@@ -819,7 +877,7 @@ export default function Page() {
               {reportType === 'despesas' && (
                 <div className={`space-y-6 ${reportType === 'despesas' ? 'col-span-1 max-w-4xl mx-auto w-full' : ''}`}>
                   <Card className="p-6 print:border-none print:shadow-none">
-                    <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><PieChart className="w-5 h-5 text-amber-500 print:text-zinc-900"/> Despesas por Categoria</h3>
+                    <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><PieChartIcon className="w-5 h-5 text-amber-500 print:text-zinc-900"/> Despesas por Categoria</h3>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
@@ -939,7 +997,10 @@ export default function Page() {
             </Card>
           </div>
         )}
-        <Card className="mt-6"><div className="flex justify-between p-4"><h3 className="font-semibold">Todas Transações</h3><div className="relative"><Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar duplicado..." className="pl-9 pr-3 py-2 bg-zinc-50 border rounded-xl text-sm w-64"/></div></div><div className="overflow-x-auto px-4 pb-4"><table className="w-full text-sm"><thead><tr className="text-zinc-400 text-xs"><th className="text-left py-2">Venc.</th><th className="text-left py-2">Descrição</th><th className="text-left py-2">Status</th><th className="text-right py-2">Valor</th><th className="text-right py-2 w-24">Ações</th></tr></thead><tbody>{filtered.map(t=><tr key={t.id} className="border-t hover:bg-zinc-50 group"><td className="py-3 text-xs">{formatDateView((t as any).data_vencimento || t.data)}</td><td className="py-3"><div className="font-medium text-xs">{t.descricao}</div>{(t.itens || t.impostos || t.observacao) && (<div className="text-[10px] text-zinc-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">{t.itens && <span>📦 {t.itens}</span>}{t.impostos && <span>🏛 Impostos: {t.impostos}</span>}{t.observacao && <span>📝 {t.observacao}</span>}</div>)}</td><td className="py-3"><span className={`px-2 py-1 rounded-full text-[10px] ${(t as any).status==='a_pagar' ? 'bg-amber-100 text-amber-700' : (t as any).status==='a_receber' ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100'}`}>{(t as any).status||'realizado'}</span></td><td className="py-3 text-right font-bold text-xs">{BRL.format(Number(t.valor))}</td><td className="py-3 text-right text-zinc-400 flex justify-end gap-3 opacity-10 md:opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={()=>toggleStatus(t)} className="hover:text-emerald-600" title="Conciliar / Desconciliar">{['pago','realizado'].includes((t as any).status||'realizado') ? <Undo2 className="w-4 h-4"/> : <Check className="w-4 h-4"/>}</button><button onClick={()=>editar(t)} className="hover:text-violet-600" title="Editar"><Pencil className="w-4 h-4"/></button><button onClick={()=>excluir(t.id)} className="hover:text-red-600" title="Excluir"><Trash2 className="w-4 h-4"/></button></td></tr>)}</tbody></table></div></Card>
+        
+        {tab === 'contas' && (
+          <Card className="mt-6"><div className="flex justify-between p-4"><h3 className="font-semibold">Todas Transações</h3><div className="relative"><Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar duplicado..." className="pl-9 pr-3 py-2 bg-zinc-50 border rounded-xl text-sm w-64"/></div></div><div className="overflow-x-auto px-4 pb-4"><table className="w-full text-sm"><thead><tr className="text-zinc-400 text-xs"><th className="text-left py-2">Venc.</th><th className="text-left py-2">Descrição</th><th className="text-left py-2">Status</th><th className="text-right py-2">Valor</th><th className="text-right py-2 w-24">Ações</th></tr></thead><tbody>{filtered.map(t=><tr key={t.id} className="border-t hover:bg-zinc-50 group"><td className="py-3 text-xs">{formatDateView((t as any).data_vencimento || t.data)}</td><td className="py-3"><div className="font-medium text-xs">{t.descricao}</div>{(t.itens || t.impostos || t.observacao) && (<div className="text-[10px] text-zinc-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">{t.itens && <span>📦 {t.itens}</span>}{t.impostos && <span>🏛 Impostos: {t.impostos}</span>}{t.observacao && <span>📝 {t.observacao}</span>}</div>)}</td><td className="py-3"><span className={`px-2 py-1 rounded-full text-[10px] ${(t as any).status==='a_pagar' ? 'bg-amber-100 text-amber-700' : (t as any).status==='a_receber' ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100'}`}>{(t as any).status||'realizado'}</span></td><td className="py-3 text-right font-bold text-xs">{BRL.format(Number(t.valor))}</td><td className="py-3 text-right text-zinc-400 flex justify-end gap-3 opacity-10 md:opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={()=>toggleStatus(t)} className="hover:text-emerald-600" title="Conciliar / Desconciliar">{['pago','realizado'].includes((t as any).status||'realizado') ? <Undo2 className="w-4 h-4"/> : <Check className="w-4 h-4"/>}</button><button onClick={()=>editar(t)} className="hover:text-violet-600" title="Editar"><Pencil className="w-4 h-4"/></button><button onClick={()=>excluir(t.id)} className="hover:text-red-600" title="Excluir"><Trash2 className="w-4 h-4"/></button></td></tr>)}</tbody></table></div></Card>
+        )}
       </main>
 
       <button onClick={()=>setChatOpen(!chatOpen)} className="fixed bottom-6 right-6 bg-violet-600 text-white rounded-full w-14 h-14 flex items-center justify-center shadow-2xl z-30 print:hidden"><MessageCircle className="w-6 h-6"/></button>
