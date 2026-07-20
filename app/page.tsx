@@ -485,9 +485,70 @@ export default function Page() {
       return;
     }
     
-    Papa.parse(file, { header: true, complete: (res) => {
+    Papa.parse(file, { header: true, skipEmptyLines: true, complete: (res) => {
       const rows = res.data as any[];
-      const parsed: Transaction[] = rows.filter(r=>r.Data && r.Valor).map(r=>({ id: generateUUID(), data: r.Data.includes('/') ? r.Data.split('/').reverse().join('-') : r.Data, descricao: (r.Descrição||r.Descricao||"").toUpperCase(), categoria: classifyWithAI(r.Descrição||r.Descricao||""), tipo: Number(String(r.Valor).replace('R$','').replace('.','').replace(',','.')) >=0 ? "Entrada" : "Saída", valor: Math.abs(Number(String(r.Valor).replace('R$','').replace('.','').replace(',','.')))||0, status: 'realizado', empresa: empresaFiltro !== 'TODAS' ? empresaFiltro : 'BOAH MATRIZ' } as any));
+      const parsed: Transaction[] = [];
+      
+      for (const r of rows) {
+        const keys = Object.keys(r);
+        const getVal = (possibleNames: string[]) => {
+          const key = keys.find(k => possibleNames.some(p => k.toLowerCase().includes(p)));
+          return key ? r[key] : null;
+        };
+
+        const dataVal = getVal(['data', 'vencimento', 'pagamento', 'lançamento']);
+        const descVal = getVal(['descri', 'bandeira', 'produto', 'resumo', 'histórico']);
+        
+        const valorLiquidoStr = getVal(['valor líquido', 'liquido', 'recebido', 'líquido']);
+        const valorBrutoStr = getVal(['valor bruto', 'venda', 'total', 'bruto']);
+        const taxaStr = getVal(['taxa', 'tarifa', 'mdr', 'desconto']);
+        const valorStr = getVal(['valor']);
+
+        if (!dataVal) continue;
+
+        const parseMoney = (v: any) => v ? Number(String(v).replace(/[R$\s]/g,'').replace(/\./g,'').replace(',','.')) : 0;
+        
+        let dataFmt = String(dataVal).split(' ')[0];
+        if (dataFmt.includes('/')) dataFmt = dataFmt.split('/').reverse().join('-');
+        
+        const descFmt = (descVal || "VENDA/MOVIMENTAÇÃO").toUpperCase();
+
+        const bruto = parseMoney(valorBrutoStr);
+        const taxa = parseMoney(taxaStr);
+        const liquido = parseMoney(valorLiquidoStr);
+        const valorGenerico = parseMoney(valorStr);
+
+        if (bruto !== 0 && taxa !== 0) {
+          parsed.push({
+            id: generateUUID(), data: dataFmt, descricao: descFmt + ' (VALOR BRUTO)',
+            categoria: 'Receita de Vendas', tipo: 'Entrada', valor: Math.abs(bruto),
+            status: 'realizado', data_vencimento: dataFmt,
+            empresa: empresaFiltro !== 'TODAS' ? empresaFiltro : 'BOAH MATRIZ'
+          } as any);
+
+          parsed.push({
+            id: generateUUID(), data: dataFmt, descricao: descFmt + ' (TAXA MÁQUINA)',
+            categoria: 'Despesas Financeiras / Taxas', tipo: 'Saída', valor: Math.abs(taxa),
+            status: 'realizado', data_vencimento: dataFmt,
+            empresa: empresaFiltro !== 'TODAS' ? empresaFiltro : 'BOAH MATRIZ'
+          } as any);
+        } else if (valorGenerico !== 0) {
+          parsed.push({
+            id: generateUUID(), data: dataFmt, descricao: descFmt,
+            categoria: classifyWithAI(descFmt), tipo: valorGenerico >= 0 ? 'Entrada' : 'Saída', 
+            valor: Math.abs(valorGenerico), status: 'realizado', data_vencimento: dataFmt,
+            empresa: empresaFiltro !== 'TODAS' ? empresaFiltro : 'BOAH MATRIZ'
+          } as any);
+        } else if (liquido !== 0) {
+           parsed.push({
+            id: generateUUID(), data: dataFmt, descricao: descFmt + ' (LÍQUIDO)',
+            categoria: 'Receita de Vendas', tipo: 'Entrada', valor: Math.abs(liquido),
+            status: 'realizado', data_vencimento: dataFmt,
+            empresa: empresaFiltro !== 'TODAS' ? empresaFiltro : 'BOAH MATRIZ'
+          } as any);
+        }
+      }
+      
       setCsvPreview(parsed);
     }});
   }
@@ -1110,7 +1171,7 @@ export default function Page() {
         </div>
       )}
 
-      {showImport && (<div className="fixed inset-0 z-50 bg-black/40 flex items-end md:items-center justify-center p-0 md:p-4"><div className="bg-white w-full md:max-w-2xl rounded-t-2xl md:rounded-2xl p-6 space-y-4 max-h-[85vh] overflow-auto"><h3 className="font-bold text-lg">Importar CSV / OFX</h3><input type="file" accept=".csv,.ofx" onChange={handleFileUpload} className="w-full text-sm border-2 border-dashed rounded-xl p-4"/>{csvPreview.length>0 && <><div className="border rounded-xl overflow-auto max-h-64"><table className="w-full text-xs"><thead><tr className="bg-zinc-50"><th className="p-2 text-left">Data</th><th className="p-2">Descrição</th><th className="p-2">Valor</th></tr></thead><tbody>{csvPreview.map(t=><tr key={t.id} className="border-t"><td className="p-2">{t.data}</td><td className="p-2">{t.descricao}</td><td className="p-2">{BRL.format(t.valor)}</td></tr>)}</tbody></table></div><button onClick={async()=>{ const res = await fetch('/api/transactions', { method: 'POST', body: JSON.stringify(csvPreview.map(c=>({...c, status: c.tipo==='Entrada'?'a_receber':'a_pagar', data_vencimento: c.data}))) }); const j = await res.json(); alert(j.duplicados?.length ? `${j.duplicados.length} duplicados bloqueados` : 'Importado!'); setTransactions([...(j.data||csvPreview), ...transactions]); setCsvPreview([]); setShowImport(false); }} className="w-full bg-violet-600 text-white py-3 rounded-xl">Importar {csvPreview.length} (bloqueia duplicados)</button></>}<button onClick={()=>setShowImport(false)} className="w-full border py-3 rounded-xl">Fechar</button></div></div>)}
+      {showImport && (<div className="fixed inset-0 z-50 bg-black/40 flex items-end md:items-center justify-center p-0 md:p-4"><div className="bg-white w-full md:max-w-2xl rounded-t-2xl md:rounded-2xl p-6 space-y-4 max-h-[85vh] overflow-auto"><h3 className="font-bold text-lg">Importar Extrato ou Maquininha (CSV / OFX)</h3><input type="file" accept=".csv,.ofx" onChange={handleFileUpload} className="w-full text-sm border-2 border-dashed rounded-xl p-4"/>{csvPreview.length>0 && <><div className="border rounded-xl overflow-auto max-h-64"><table className="w-full text-xs"><thead><tr className="bg-zinc-50"><th className="p-2 text-left">Data</th><th className="p-2">Descrição</th><th className="p-2">Valor</th></tr></thead><tbody>{csvPreview.map(t=><tr key={t.id} className="border-t"><td className="p-2">{t.data}</td><td className="p-2">{t.descricao}</td><td className="p-2">{BRL.format(t.valor)}</td></tr>)}</tbody></table></div><button onClick={async()=>{ const res = await fetch('/api/transactions', { method: 'POST', body: JSON.stringify(csvPreview.map(c=>({...c, status: c.tipo==='Entrada'?'a_receber':'a_pagar', data_vencimento: c.data}))) }); const j = await res.json(); alert(j.duplicados?.length ? `${j.duplicados.length} duplicados bloqueados` : 'Importado!'); setTransactions([...(j.data||csvPreview), ...transactions]); setCsvPreview([]); setShowImport(false); }} className="w-full bg-violet-600 text-white py-3 rounded-xl">Importar {csvPreview.length} lançamentos (Bloqueia Duplicados)</button></>}<button onClick={()=>setShowImport(false)} className="w-full border py-3 rounded-xl">Fechar</button></div></div>)}
     </div>
   );
 }
