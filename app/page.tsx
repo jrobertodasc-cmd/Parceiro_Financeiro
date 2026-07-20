@@ -22,6 +22,7 @@ const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' 
 export default function Page() {
   const [logged, setLogged] = useState(false);
   const [tab, setTab] = useState<'dash' | 'dre' | 'contas' | 'reports' | 'metas'>('dash');
+  const [listFilter, setListFilter] = useState<'pendentes' | 'realizados' | 'todas'>('pendentes');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState<'receita'|'despesa'>('despesa');
@@ -37,7 +38,7 @@ export default function Page() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [budgets, setBudgets] = useState<any[]>([]);
   const [budgetForm, setBudgetForm] = useState({ tipo: 'Despesa', referencia: '21701 - Comunicação/Mídia Digital - Despesas Operacionais/Fecebook/Email/Mailship/Agencia/Programas e apps', valor: '' });
-  const [flowView, setFlowView] = useState<'diario'|'semanal'|'acumulado'>('diario');
+  const [flowView, setFlowView] = useState<'diario'|'semanal'|'acumulado'|'tendencia'|'realizado'>('realizado');
   const [form, setForm] = useState({ descricao: "", valor: "", data: new Date().toISOString().slice(0,10), vencimento: new Date().toISOString().slice(0,10), tipo: "Saída" as any, categoria: "Fornecedor" as any, status: "a_pagar" as any, observacao: "", itens: "", impostos: "", impostos_federais: "", empresa: "BOAH MATRIZ", recorrente: false, rateio_filiais: [] as {empresa:string, valor:number}[], rateio_categorias: [] as {categoria:string, valor:number}[] });
   const [showRateio, setShowRateio] = useState(false);
   const [comprovanteFile, setComprovanteFile] = useState<File|null>(null);
@@ -125,8 +126,15 @@ export default function Page() {
     if (empresaFiltro !== 'TODAS') {
       tr = tr.filter(t => t.empresa === empresaFiltro || t.rateio_filiais?.some(r => r.empresa === empresaFiltro));
     }
+    
+    if (listFilter === 'pendentes') {
+      tr = tr.filter(t => ['a_pagar','a_receber','previsto','vencido'].includes((t as any).status || 'realizado'));
+    } else if (listFilter === 'realizados') {
+      tr = tr.filter(t => ['pago','realizado'].includes((t as any).status || 'realizado'));
+    }
+    
     return tr.slice(0,50);
-  }, [transactions, search, empresaFiltro]);
+  }, [transactions, search, empresaFiltro, listFilter]);
 
   const contas = useMemo(()=>{
     let tr = flattenTransactions(transactions);
@@ -140,9 +148,6 @@ export default function Page() {
     return { aPagar, aReceber, realizadas, trMes, trGeral: tr };
   }, [transactions, mesFiltro, empresaFiltro]);
 
-  // ============================================
-  // PLANO DE CONTAS & LÓGICA GERENCIAL DRE
-  // ============================================
   const totals = useMemo(()=> {
     const { trMes, realizadas, aPagar: cAPagar, aReceber: cAReceber, trGeral } = contas;
 
@@ -151,7 +156,6 @@ export default function Page() {
     const aReceber = cAReceber.reduce((s,t)=>s+Number(t.valor),0);
     const aPagar = cAPagar.reduce((s,t)=>s+Number(t.valor),0);
     
-    // Motor de Classificação (Plano de Contas Gerencial)
     let receitaBruta = 0;
     let deducoes = 0;
     let cmvCsv = 0;
@@ -198,13 +202,12 @@ export default function Page() {
           dreBreakdown.impostosLucro[label] = (dreBreakdown.impostosLucro[label] || 0) + val;
         }
         else {
-          despOperacionais += val; // Vendas, Admin, Pessoal, Fixos, etc.
+          despOperacionais += val; 
           dreBreakdown.despOperacionais[label] = (dreBreakdown.despOperacionais[label] || 0) + val;
         }
       }
     });
 
-    // Lógica Matemática da DRE
     const receitaLiquida = receitaBruta - deducoes;
     const lucroBruto = receitaLiquida - cmvCsv;
     const ebitda = lucroBruto - despOperacionais;
@@ -251,7 +254,6 @@ export default function Page() {
       margemEbitda, margemLiquida, pontoEquilibrio, margem: margemLiquida, 
       porCategoria, aReceber, aPagar, topFornecedores, topFontesReceita,
       dreBreakdown,
-      // Legacy support for older components
       fixo: despOperacionais, variavel: cmvCsv, fornecedor: cmvCsv, imposto: deducoes + impostosLucro
     };
   }, [contas, mesFiltro]);
@@ -269,6 +271,33 @@ export default function Page() {
     
     trMes.forEach(t=>{ 
       const dataKey = ((t as any).data_vencimento || t.data).slice(0,10);
+      if (map[dataKey]) {
+        if (t.tipo==='Entrada') map[dataKey].entrada += Number(t.valor); 
+        else map[dataKey].saida += Number(t.valor); 
+      }
+    });
+    
+    let acc=0; 
+    return Object.entries(map).map(([date, v])=>{ 
+      acc += v.entrada - v.saida; 
+      const [y,m,d] = date.split('-');
+      return { date: `${d}/${m}`, entrada: v.entrada, saida: v.saida, saldo: acc }; 
+    });
+  }, [contas, mesFiltro]);
+
+  const chartDataRealizado = useMemo(()=> {
+    const { realizadas } = contas;
+    const [year, month] = mesFiltro.split('-');
+    const daysInMonth = new Date(parseInt(year), parseInt(month), 0).getDate();
+    
+    const map: Record<string, {entrada:number, saida:number}> = {};
+    for (let i=1; i<=daysInMonth; i++) { 
+      const key = `${mesFiltro}-${String(i).padStart(2,'0')}`; 
+      map[key] = { entrada:0, saida:0 }; 
+    }
+    
+    realizadas.forEach(t=>{ 
+      const dataKey = ((t as any).data_pagamento || (t as any).data_vencimento || t.data).slice(0,10);
       if (map[dataKey]) {
         if (t.tipo==='Entrada') map[dataKey].entrada += Number(t.valor); 
         else map[dataKey].saida += Number(t.valor); 
@@ -765,10 +794,11 @@ export default function Page() {
               <Card className="lg:col-span-2 p-6">
                  <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-3">
                   <h3 className="font-bold text-base">Análise de Caixa e DRE</h3>
-                  <div className="flex bg-zinc-100 rounded-xl p-1">
-                    <button onClick={()=>setFlowView('diario')} className={`px-3 py-1 text-[11px] rounded-lg font-medium ${flowView==='diario' ? 'bg-white shadow-sm' : 'text-zinc-500'}`}>Diário</button>
-                    <button onClick={()=>setFlowView('acumulado')} className={`px-3 py-1 text-[11px] rounded-lg font-medium ${flowView==='acumulado' ? 'bg-white shadow-sm' : 'text-zinc-500'}`}>Acumulado</button>
-                    <button onClick={()=>setFlowView('tendencia')} className={`px-3 py-1 text-[11px] rounded-lg font-medium ${flowView==='tendencia' ? 'bg-white shadow-sm text-violet-600' : 'text-zinc-500'}`}>Tendência DRE</button>
+                  <div className="flex bg-zinc-100 rounded-xl p-1 flex-wrap">
+                    <button onClick={()=>setFlowView('realizado')} className={`px-3 py-1 text-[11px] rounded-lg font-medium transition ${flowView==='realizado' ? 'bg-white shadow-sm text-emerald-600' : 'text-zinc-500 hover:bg-zinc-200'}`}>Caixa Realizado</button>
+                    <button onClick={()=>setFlowView('diario')} className={`px-3 py-1 text-[11px] rounded-lg font-medium transition ${flowView==='diario' ? 'bg-white shadow-sm' : 'text-zinc-500 hover:bg-zinc-200'}`}>Previsão Diária</button>
+                    <button onClick={()=>setFlowView('acumulado')} className={`px-3 py-1 text-[11px] rounded-lg font-medium transition ${flowView==='acumulado' ? 'bg-white shadow-sm' : 'text-zinc-500 hover:bg-zinc-200'}`}>Acumulado</button>
+                    <button onClick={()=>setFlowView('tendencia')} className={`px-3 py-1 text-[11px] rounded-lg font-medium transition ${flowView==='tendencia' ? 'bg-white shadow-sm text-violet-600' : 'text-zinc-500 hover:bg-zinc-200'}`}>Tendência DRE</button>
                   </div>
                 </div>
                 <div className="h-[320px] w-full">
@@ -777,8 +807,10 @@ export default function Page() {
                       <ComposedChart data={trendData}><CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" /><XAxis dataKey="mes" tick={{fontSize:11}} axisLine={false} tickLine={false}/><YAxis tick={{fontSize:11}} axisLine={false} tickLine={false} tickFormatter={(v)=>`R$${(v/1000).toFixed(0)}k`}/><Tooltip content={({active,payload,label}:any)=> active && payload ? (<div className="bg-zinc-900 text-white text-xs p-3 rounded-xl"><div className="font-bold mb-1">{label}</div>{payload.map((p:any)=><div key={p.dataKey} className="flex justify-between gap-4"><span>{p.name}:</span><span className={p.value < 0 ? 'text-red-400' : 'text-emerald-400'}>{BRL.format(p.value)}</span></div>)}</div>) : null }/><Bar dataKey="EBITDA" fill="#10b981" radius={[4,4,0,0]} barSize={20} name="EBITDA"/><Bar dataKey="Lucro" fill="#7c3aed" radius={[4,4,0,0]} barSize={20} name="Lucro Líquido"/></ComposedChart>
                     ) : flowView === 'acumulado' ? (
                       <AreaChart data={chartData}><CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" /><XAxis dataKey="date" tick={{fontSize:11, fill:'#888'}} axisLine={false} tickLine={false}/><YAxis tick={{fontSize:11, fill:'#888'}} axisLine={false} tickLine={false} tickFormatter={(v)=>`R$${(v/1000).toFixed(0)}k`}/><Tooltip content={({active,payload,label}:any)=> active && payload ? (<div className="bg-zinc-900 text-white text-xs p-3 rounded-xl"><div className="font-bold mb-1">{label}</div>{payload.map((p:any)=><div key={p.dataKey}>{p.name}: {BRL.format(p.value)}</div>)}</div>) : null }/><Area type="monotone" dataKey="saldo" stroke="#7c3aed" fill="#7c3aed" fillOpacity={0.1} strokeWidth={2.5} dot={false}/></AreaChart>
+                    ) : flowView === 'realizado' ? (
+                      <ComposedChart data={chartDataRealizado}><CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" /><XAxis dataKey="date" tick={{fontSize:11}} axisLine={false} tickLine={false}/><YAxis tick={{fontSize:11}} axisLine={false} tickLine={false} tickFormatter={(v)=>`R$${(v/1000).toFixed(0)}k`}/><Tooltip content={({active,payload,label}:any)=> active && payload ? (<div className="bg-zinc-900 text-white text-xs p-3 rounded-xl"><div className="font-bold mb-1">{label}</div>{payload.map((p:any)=><div key={p.dataKey} className="flex justify-between gap-4"><span>{p.name}:</span><span>{BRL.format(p.value)}</span></div>)}</div>) : null }/><Bar dataKey="entrada" fill="#10b981" radius={[4,4,0,0]} barSize={12} name="Entradas Realizadas"/><Bar dataKey="saida" fill="#ef4444" radius={[4,4,0,0]} barSize={12} name="Saídas Realizadas"/><Line type="monotone" dataKey="saldo" stroke="#7c3aed" strokeWidth={2.5} dot={false} strokeDasharray="6 4" name="Saldo Caixa"/></ComposedChart>
                     ) : (
-                      <ComposedChart data={chartData}><CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" /><XAxis dataKey="date" tick={{fontSize:11}} axisLine={false} tickLine={false}/><YAxis tick={{fontSize:11}} axisLine={false} tickLine={false} tickFormatter={(v)=>`R$${(v/1000).toFixed(0)}k`}/><Tooltip content={({active,payload,label}:any)=> active && payload ? (<div className="bg-zinc-900 text-white text-xs p-3 rounded-xl"><div className="font-bold mb-1">{label}</div>{payload.map((p:any)=><div key={p.dataKey} className="flex justify-between gap-4"><span>{p.name}:</span><span>{BRL.format(p.value)}</span></div>)}</div>) : null }/><Bar dataKey="entrada" fill="#10b981" radius={[4,4,0,0]} barSize={12} name="Entrada"/><Bar dataKey="saida" fill="#ef4444" radius={[4,4,0,0]} barSize={12} name="Saída"/><Line type="monotone" dataKey="saldo" stroke="#7c3aed" strokeWidth={2.5} dot={false} strokeDasharray="6 4" name="Saldo"/></ComposedChart>
+                      <ComposedChart data={chartData}><CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" /><XAxis dataKey="date" tick={{fontSize:11}} axisLine={false} tickLine={false}/><YAxis tick={{fontSize:11}} axisLine={false} tickLine={false} tickFormatter={(v)=>`R$${(v/1000).toFixed(0)}k`}/><Tooltip content={({active,payload,label}:any)=> active && payload ? (<div className="bg-zinc-900 text-white text-xs p-3 rounded-xl"><div className="font-bold mb-1">{label}</div>{payload.map((p:any)=><div key={p.dataKey} className="flex justify-between gap-4"><span>{p.name}:</span><span>{BRL.format(p.value)}</span></div>)}</div>) : null }/><Bar dataKey="entrada" fill="#10b981" radius={[4,4,0,0]} barSize={12} name="Entrada Prevista"/><Bar dataKey="saida" fill="#ef4444" radius={[4,4,0,0]} barSize={12} name="Saída Prevista"/><Line type="monotone" dataKey="saldo" stroke="#7c3aed" strokeWidth={2.5} dot={false} strokeDasharray="6 4" name="Saldo Projetado"/></ComposedChart>
                     )}
                   </ResponsiveContainer>
                 </div>
@@ -1108,7 +1140,28 @@ export default function Page() {
         )}
         
         {tab === 'contas' && (
-          <Card className="mt-6"><div className="flex justify-between p-4"><h3 className="font-semibold">Todas Transações</h3><div className="relative"><Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar duplicado..." className="pl-9 pr-3 py-2 bg-zinc-50 border rounded-xl text-sm w-64"/></div></div><div className="overflow-x-auto px-4 pb-4"><table className="w-full text-sm"><thead><tr className="text-zinc-400 text-xs"><th className="text-left py-2">Venc.</th><th className="text-left py-2">Descrição</th><th className="text-left py-2">Status</th><th className="text-right py-2">Valor</th><th className="text-right py-2 w-24">Ações</th></tr></thead><tbody>{filtered.map(t=><tr key={t.id} className="border-t hover:bg-zinc-50 group"><td className="py-3 text-xs">{formatDateView((t as any).data_vencimento || t.data)}</td><td className="py-3"><div className="font-medium text-xs">{t.descricao}</div>{(t.itens || t.impostos || t.observacao) && (<div className="text-[10px] text-zinc-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">{t.itens && <span>📦 {t.itens}</span>}{t.impostos && <span>🏛 Impostos: {t.impostos}</span>}{t.observacao && <span>📝 {t.observacao}</span>}</div>)}</td><td className="py-3"><span className={`px-2 py-1 rounded-full text-[10px] ${(t as any).status==='a_pagar' ? 'bg-amber-100 text-amber-700' : (t as any).status==='a_receber' ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100'}`}>{(t as any).status||'realizado'}</span></td><td className="py-3 text-right font-bold text-xs">{BRL.format(Number(t.valor))}</td><td className="py-3 text-right text-zinc-400 flex justify-end gap-3 opacity-10 md:opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={()=>toggleStatus(t)} className="hover:text-emerald-600" title="Conciliar / Desconciliar">{['pago','realizado'].includes((t as any).status||'realizado') ? <Undo2 className="w-4 h-4"/> : <Check className="w-4 h-4"/>}</button><button onClick={()=>editar(t)} className="hover:text-violet-600" title="Editar"><Pencil className="w-4 h-4"/></button><button onClick={()=>excluir(t.id)} className="hover:text-red-600" title="Excluir"><Trash2 className="w-4 h-4"/></button></td></tr>)}</tbody></table></div></Card>
+            <Card className="mt-6">
+              <div className="flex flex-col md:flex-row justify-between p-4 gap-4">
+                <h3 className="font-semibold flex items-center gap-2">Extrato e Pendências</h3>
+                
+                <div className="flex bg-zinc-100 rounded-lg p-1 text-[11px]">
+                  <button onClick={()=>setListFilter('pendentes')} className={`px-3 py-1.5 rounded-md transition ${listFilter==='pendentes' ? 'bg-white shadow-sm font-bold text-zinc-900' : 'text-zinc-500 hover:bg-zinc-200'}`}>A Pagar / Receber</button>
+                  <button onClick={()=>setListFilter('realizados')} className={`px-3 py-1.5 rounded-md transition ${listFilter==='realizados' ? 'bg-white shadow-sm font-bold text-zinc-900' : 'text-zinc-500 hover:bg-zinc-200'}`}>Extrato (Realizados)</button>
+                  <button onClick={()=>setListFilter('todas')} className={`px-3 py-1.5 rounded-md transition ${listFilter==='todas' ? 'bg-white shadow-sm font-bold text-zinc-900' : 'text-zinc-500 hover:bg-zinc-200'}`}>Todas</button>
+                </div>
+
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"/>
+                  <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar..." className="pl-9 pr-3 py-2 bg-zinc-50 border rounded-xl text-sm w-full md:w-64"/>
+                </div>
+              </div>
+              <div className="overflow-x-auto px-4 pb-4">
+                <table className="w-full text-sm">
+                  <thead><tr className="text-zinc-400 text-xs"><th className="text-left py-2">Venc.</th><th className="text-left py-2">Descrição</th><th className="text-left py-2">Status</th><th className="text-right py-2">Valor</th><th className="text-right py-2 w-24">Ações</th></tr></thead>
+                  <tbody>{filtered.map(t=><tr key={t.id} className="border-t hover:bg-zinc-50 group"><td className="py-3 text-xs">{formatDateView((t as any).data_vencimento || t.data)}</td><td className="py-3"><div className="font-medium text-xs">{t.descricao}</div>{(t.itens || t.impostos || t.observacao) && (<div className="text-[10px] text-zinc-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">{t.itens && <span>📦 {t.itens}</span>}{t.impostos && <span>🏛 Impostos: {t.impostos}</span>}{t.observacao && <span>📝 {t.observacao}</span>}</div>)}</td><td className="py-3"><span className={`px-2 py-1 rounded-full text-[10px] ${(t as any).status==='a_pagar' ? 'bg-amber-100 text-amber-700' : (t as any).status==='a_receber' ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100'}`}>{(t as any).status||'realizado'}</span></td><td className="py-3 text-right font-bold text-xs">{BRL.format(Number(t.valor))}</td><td className="py-3 text-right text-zinc-400 flex justify-end gap-3 opacity-10 md:opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={()=>toggleStatus(t)} className="hover:text-emerald-600" title="Conciliar / Desconciliar">{['pago','realizado'].includes((t as any).status||'realizado') ? <Undo2 className="w-4 h-4"/> : <Check className="w-4 h-4"/>}</button><button onClick={()=>editar(t)} className="hover:text-violet-600" title="Editar"><Pencil className="w-4 h-4"/></button><button onClick={()=>excluir(t.id)} className="hover:text-red-600" title="Excluir"><Trash2 className="w-4 h-4"/></button></td></tr>)}</tbody>
+                </table>
+              </div>
+            </Card>
         )}
       </main>
 
