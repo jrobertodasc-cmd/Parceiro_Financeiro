@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Transaction, supabase } from '@/lib/supabase';
 import { generateMockTransactions } from '@/lib/mock';
 import { classifyWithAI } from '@/lib/classify';
-import { Plus, Trash2, ArrowUpCircle, ArrowDownCircle, Search, Edit2, Pencil, Save, X, Calendar, Upload, BarChart3, Clock, Wallet, Settings, LogOut, Check, Undo2, PieChart, Activity, Layers, Target, BarChart, TrendingUp, Download, TrendingDown, MessageCircle, Sparkles, Send, AlertTriangle, FileSpreadsheet, ShoppingCart } from 'lucide-react';
+import { Plus, Trash2, ArrowUpCircle, ArrowDownCircle, Search, Edit2, Pencil, Save, X, Calendar, Upload, BarChart3, Clock, Wallet, Settings, LogOut, Check, Undo2, PieChart, Activity, Layers, Target, BarChart, TrendingUp, Download, TrendingDown, MessageCircle, Sparkles, Send, AlertTriangle, FileSpreadsheet, ShoppingCart, ChevronDown, ChevronRight } from 'lucide-react';
 import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area, AreaChart } from 'recharts';
 import Papa from 'papaparse';
 import { CATEGORIAS } from '@/lib/categorias';
@@ -47,6 +47,7 @@ export default function Page() {
   const [dupWarning, setDupWarning] = useState<string>("");
   const [editingId, setEditingId] = useState<string|null>(null);
   const [reportType, setReportType] = useState<'geral'|'dre'|'despesas'|'receitas'>('geral');
+  const [expandedDreGroup, setExpandedDreGroup] = useState<string | null>(null);
 
   const fetchData = useCallback(() => {
     fetch('/api/transactions', { cache: 'no-store' })
@@ -173,6 +174,15 @@ export default function Page() {
     let resFinanceiro = 0;
     let impostosLucro = 0;
     let depreciacao = 0; 
+    
+    const dreBreakdown = {
+      receitaBruta: {} as Record<string, number>,
+      deducoes: {} as Record<string, number>,
+      cmvCsv: {} as Record<string, number>,
+      despOperacionais: {} as Record<string, number>,
+      resFinanceiro: {} as Record<string, number>,
+      impostosLucro: {} as Record<string, number>
+    };
 
     const porCategoria = trMes.filter(t=>t.tipo==='Saída').reduce((acc: any, t)=>{ acc[t.categoria] = (acc[t.categoria]||0)+Number(t.valor); return acc; },{});
 
@@ -180,24 +190,31 @@ export default function Page() {
       const val = Number(t.valor);
       const cat = (t.categoria || '').toUpperCase();
       const desc = (t.descricao || '').toUpperCase();
+      const label = cat || desc || 'OUTROS';
       
       if (t.tipo === 'Entrada') {
         receitaBruta += val; 
+        dreBreakdown.receitaBruta[label] = (dreBreakdown.receitaBruta[label] || 0) + val;
       } else if (t.tipo === 'Saída') {
         if (cat.startsWith('3 -') || cat.startsWith('223') || cat.includes('IMPOSTO SOBRE VENDA') || cat.includes('SIMPLES NACIONAL')) {
           deducoes += val;
+          dreBreakdown.deducoes[label] = (dreBreakdown.deducoes[label] || 0) + val;
         } 
         else if (cat.startsWith('121') || cat.includes('FORNECEDOR') || cat.includes('TECIDO') || cat.includes('EMBALAGEM') || cat.includes('FRETE')) {
           cmvCsv += val;
+          dreBreakdown.cmvCsv[label] = (dreBreakdown.cmvCsv[label] || 0) + val;
         }
         else if (cat.includes('TARIFA') || cat.includes('JUROS') || cat.includes('FINANCEIRO')) {
           resFinanceiro += val;
+          dreBreakdown.resFinanceiro[label] = (dreBreakdown.resFinanceiro[label] || 0) + val;
         }
         else if (desc.includes('IRPJ') || desc.includes('CSLL')) {
           impostosLucro += val;
+          dreBreakdown.impostosLucro[label] = (dreBreakdown.impostosLucro[label] || 0) + val;
         }
         else {
           despOperacionais += val; // Vendas, Admin, Pessoal, Fixos, etc.
+          dreBreakdown.despOperacionais[label] = (dreBreakdown.despOperacionais[label] || 0) + val;
         }
       }
     });
@@ -238,6 +255,7 @@ export default function Page() {
       lucroLiquido, receitaBruta, deducoes, receitaLiquida, cmvCsv, lucroBruto, despOperacionais, ebitda, resFinanceiro, impostosLucro,
       margemEbitda, margemLiquida, pontoEquilibrio, margem: margemLiquida, 
       porCategoria, aReceber, aPagar, topFornecedores,
+      dreBreakdown,
       // Legacy support for older components
       fixo: despOperacionais, variavel: cmvCsv, fornecedor: cmvCsv, imposto: deducoes + impostosLucro
     };
@@ -493,6 +511,121 @@ export default function Page() {
     setIsLoggingIn(false);
   }
 
+  const renderDreTable = () => (
+    <table className="w-full text-sm">
+      <thead>
+        <tr className="border-b text-zinc-400 text-xs">
+          <th className="text-left font-normal py-2">Descrição</th>
+          <th className="text-right font-normal py-2">Valor</th>
+          <th className="text-right font-normal py-2 w-20">AV%</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-zinc-100">
+        <tr className="bg-emerald-50/50 print:bg-emerald-50 cursor-pointer hover:bg-emerald-100 transition" onClick={() => setExpandedDreGroup(expandedDreGroup === 'receitaBruta' ? null : 'receitaBruta')}>
+          <td className="py-2.5 px-3 font-bold text-emerald-900 flex items-center gap-2">{expandedDreGroup === 'receitaBruta' ? <ChevronDown className="w-4 h-4"/> : <ChevronRight className="w-4 h-4"/>} Receita Bruta</td>
+          <td className="py-2.5 px-3 text-right font-bold text-emerald-900">{BRL.format(totals.receitaBruta)}</td>
+          <td className="py-2.5 px-3 text-right text-xs text-emerald-700">{totals.receitaLiquida ? ((totals.receitaBruta/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+        </tr>
+        {expandedDreGroup === 'receitaBruta' && Object.entries(totals.dreBreakdown.receitaBruta).sort((a:any,b:any)=>b[1]-a[1]).map(([cat, val]:any) => (
+          <tr key={cat} className="bg-emerald-50/30 print:bg-white text-xs">
+            <td className="py-2 px-3 pl-10 text-emerald-700">{cat}</td>
+            <td className="py-2 px-3 text-right text-emerald-700">{BRL.format(val)}</td>
+            <td className="py-2 px-3 text-right text-emerald-600">{totals.receitaLiquida ? ((val/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+          </tr>
+        ))}
+        
+        <tr className="cursor-pointer hover:bg-zinc-50 transition" onClick={() => setExpandedDreGroup(expandedDreGroup === 'deducoes' ? null : 'deducoes')}>
+          <td className="py-2.5 px-3 pl-6 text-zinc-600 flex items-center gap-2">{expandedDreGroup === 'deducoes' ? <ChevronDown className="w-4 h-4"/> : <ChevronRight className="w-4 h-4"/>} (-) Deduções (Impostos/Devoluções)</td>
+          <td className="py-2.5 px-3 text-right text-red-600">- {BRL.format(totals.deducoes)}</td>
+          <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.deducoes/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+        </tr>
+        {expandedDreGroup === 'deducoes' && Object.entries(totals.dreBreakdown.deducoes).sort((a:any,b:any)=>b[1]-a[1]).map(([cat, val]:any) => (
+          <tr key={cat} className="bg-zinc-50/50 print:bg-white text-xs">
+            <td className="py-2 px-3 pl-12 text-zinc-500">{cat}</td>
+            <td className="py-2 px-3 text-right text-zinc-500">{BRL.format(val)}</td>
+            <td className="py-2 px-3 text-right text-zinc-400">{totals.receitaLiquida ? ((val/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+          </tr>
+        ))}
+        
+        <tr className="bg-zinc-50 print:bg-zinc-100 font-semibold border-t-2 border-zinc-200">
+          <td className="py-2.5 px-3">Receita Líquida</td>
+          <td className="py-2.5 px-3 text-right">{BRL.format(totals.receitaLiquida)}</td>
+          <td className="py-2.5 px-3 text-right text-xs text-zinc-500">100.0%</td>
+        </tr>
+        
+        <tr className="cursor-pointer hover:bg-zinc-50 transition" onClick={() => setExpandedDreGroup(expandedDreGroup === 'cmvCsv' ? null : 'cmvCsv')}>
+          <td className="py-2.5 px-3 pl-6 text-zinc-600 flex items-center gap-2">{expandedDreGroup === 'cmvCsv' ? <ChevronDown className="w-4 h-4"/> : <ChevronRight className="w-4 h-4"/>} (-) CMV / CSV (Variáveis)</td>
+          <td className="py-2.5 px-3 text-right text-red-600">- {BRL.format(totals.cmvCsv)}</td>
+          <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.cmvCsv/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+        </tr>
+        {expandedDreGroup === 'cmvCsv' && Object.entries(totals.dreBreakdown.cmvCsv).sort((a:any,b:any)=>b[1]-a[1]).map(([cat, val]:any) => (
+          <tr key={cat} className="bg-zinc-50/50 print:bg-white text-xs">
+            <td className="py-2 px-3 pl-12 text-zinc-500">{cat}</td>
+            <td className="py-2 px-3 text-right text-zinc-500">{BRL.format(val)}</td>
+            <td className="py-2 px-3 text-right text-zinc-400">{totals.receitaLiquida ? ((val/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+          </tr>
+        ))}
+        
+        <tr className="bg-zinc-50 print:bg-zinc-100 font-semibold border-t-2 border-zinc-200">
+          <td className="py-2.5 px-3">Lucro Bruto</td>
+          <td className="py-2.5 px-3 text-right">{BRL.format(totals.lucroBruto)}</td>
+          <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.lucroBruto/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+        </tr>
+        
+        <tr className="cursor-pointer hover:bg-zinc-50 transition" onClick={() => setExpandedDreGroup(expandedDreGroup === 'despOperacionais' ? null : 'despOperacionais')}>
+          <td className="py-2.5 px-3 pl-6 text-zinc-600 flex items-center gap-2">{expandedDreGroup === 'despOperacionais' ? <ChevronDown className="w-4 h-4"/> : <ChevronRight className="w-4 h-4"/>} (-) Despesas Operacionais</td>
+          <td className="py-2.5 px-3 text-right text-red-600">- {BRL.format(totals.despOperacionais)}</td>
+          <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.despOperacionais/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+        </tr>
+        {expandedDreGroup === 'despOperacionais' && Object.entries(totals.dreBreakdown.despOperacionais).sort((a:any,b:any)=>b[1]-a[1]).map(([cat, val]:any) => (
+          <tr key={cat} className="bg-zinc-50/50 print:bg-white text-xs">
+            <td className="py-2 px-3 pl-12 text-zinc-500">{cat}</td>
+            <td className="py-2 px-3 text-right text-zinc-500">{BRL.format(val)}</td>
+            <td className="py-2 px-3 text-right text-zinc-400">{totals.receitaLiquida ? ((val/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+          </tr>
+        ))}
+        
+        <tr className="bg-zinc-50 print:bg-zinc-100 font-semibold border-t-2 border-zinc-200 text-violet-900">
+          <td className="py-2.5 px-3">EBITDA (Geração de Caixa)</td>
+          <td className="py-2.5 px-3 text-right">{BRL.format(totals.ebitda)}</td>
+          <td className="py-2.5 px-3 text-right text-xs">{totals.receitaLiquida ? ((totals.ebitda/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+        </tr>
+        
+        <tr className="cursor-pointer hover:bg-zinc-50 transition" onClick={() => setExpandedDreGroup(expandedDreGroup === 'resFinanceiro' ? null : 'resFinanceiro')}>
+          <td className="py-2.5 px-3 pl-6 text-zinc-600 flex items-center gap-2">{expandedDreGroup === 'resFinanceiro' ? <ChevronDown className="w-4 h-4"/> : <ChevronRight className="w-4 h-4"/>} (-) Resultado Financeiro</td>
+          <td className="py-2.5 px-3 text-right text-red-600">- {BRL.format(totals.resFinanceiro)}</td>
+          <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.resFinanceiro/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+        </tr>
+        {expandedDreGroup === 'resFinanceiro' && Object.entries(totals.dreBreakdown.resFinanceiro).sort((a:any,b:any)=>b[1]-a[1]).map(([cat, val]:any) => (
+          <tr key={cat} className="bg-zinc-50/50 print:bg-white text-xs">
+            <td className="py-2 px-3 pl-12 text-zinc-500">{cat}</td>
+            <td className="py-2 px-3 text-right text-zinc-500">{BRL.format(val)}</td>
+            <td className="py-2 px-3 text-right text-zinc-400">{totals.receitaLiquida ? ((val/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+          </tr>
+        ))}
+        
+        <tr className="cursor-pointer hover:bg-zinc-50 transition" onClick={() => setExpandedDreGroup(expandedDreGroup === 'impostosLucro' ? null : 'impostosLucro')}>
+          <td className="py-2.5 px-3 pl-6 text-zinc-600 flex items-center gap-2">{expandedDreGroup === 'impostosLucro' ? <ChevronDown className="w-4 h-4"/> : <ChevronRight className="w-4 h-4"/>} (-) Impostos sobre Lucro (IRPJ/CSLL)</td>
+          <td className="py-2.5 px-3 text-right text-red-600">- {BRL.format(totals.impostosLucro)}</td>
+          <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.impostosLucro/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+        </tr>
+        {expandedDreGroup === 'impostosLucro' && Object.entries(totals.dreBreakdown.impostosLucro).sort((a:any,b:any)=>b[1]-a[1]).map(([cat, val]:any) => (
+          <tr key={cat} className="bg-zinc-50/50 print:bg-white text-xs">
+            <td className="py-2 px-3 pl-12 text-zinc-500">{cat}</td>
+            <td className="py-2 px-3 text-right text-zinc-500">{BRL.format(val)}</td>
+            <td className="py-2 px-3 text-right text-zinc-400">{totals.receitaLiquida ? ((val/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
+          </tr>
+        ))}
+        
+        <tr className="bg-zinc-900 text-white font-bold print:bg-zinc-900 print:text-white border-t-4 border-black">
+          <td className="py-4 px-3 rounded-l-xl print:rounded-none">Lucro Líquido Final</td>
+          <td className="py-4 px-3 text-right">{BRL.format(totals.lucroLiquido)}</td>
+          <td className="py-4 px-3 text-right text-xs rounded-r-xl print:rounded-none">{totals.margemLiquida.toFixed(1)}%</td>
+        </tr>
+      </tbody>
+    </table>
+  );
+
   if (!logged) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-zinc-50 p-4">
@@ -596,67 +729,7 @@ export default function Page() {
           <Card className="p-6 max-w-4xl mx-auto">
             <h2 className="font-bold text-lg mb-4">DRE Gerencial</h2>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-zinc-400 text-xs">
-                    <th className="text-left font-normal py-2">Descrição</th>
-                    <th className="text-right font-normal py-2">Valor</th>
-                    <th className="text-right font-normal py-2 w-20">AV%</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100">
-                  <tr className="bg-emerald-50/50 print:bg-emerald-50">
-                    <td className="py-2.5 px-3 font-bold text-emerald-900">Receita Bruta</td>
-                    <td className="py-2.5 px-3 text-right font-bold text-emerald-900">{BRL.format(totals.receitaBruta)}</td>
-                    <td className="py-2.5 px-3 text-right text-xs text-emerald-700">{totals.receitaLiquida ? ((totals.receitaBruta/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2.5 px-3 pl-6 text-zinc-600">(-) Deduções (Impostos/Devoluções)</td>
-                    <td className="py-2.5 px-3 text-right text-red-600">- {BRL.format(totals.deducoes)}</td>
-                    <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.deducoes/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
-                  </tr>
-                  <tr className="bg-zinc-50 print:bg-zinc-100 font-semibold border-t-2 border-zinc-200">
-                    <td className="py-2.5 px-3">Receita Líquida</td>
-                    <td className="py-2.5 px-3 text-right">{BRL.format(totals.receitaLiquida)}</td>
-                    <td className="py-2.5 px-3 text-right text-xs text-zinc-500">100.0%</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2.5 px-3 pl-6 text-zinc-600">(-) CMV / CSV (Variáveis)</td>
-                    <td className="py-2.5 px-3 text-right text-red-600">- {BRL.format(totals.cmvCsv)}</td>
-                    <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.cmvCsv/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
-                  </tr>
-                  <tr className="bg-zinc-50 print:bg-zinc-100 font-semibold border-t-2 border-zinc-200">
-                    <td className="py-2.5 px-3">Lucro Bruto</td>
-                    <td className="py-2.5 px-3 text-right">{BRL.format(totals.lucroBruto)}</td>
-                    <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.lucroBruto/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2.5 px-3 pl-6 text-zinc-600">(-) Despesas Operacionais</td>
-                    <td className="py-2.5 px-3 text-right text-red-600">- {BRL.format(totals.despOperacionais)}</td>
-                    <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.despOperacionais/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
-                  </tr>
-                  <tr className="bg-zinc-50 print:bg-zinc-100 font-semibold border-t-2 border-zinc-200 text-violet-900">
-                    <td className="py-2.5 px-3">EBITDA (Geração de Caixa)</td>
-                    <td className="py-2.5 px-3 text-right">{BRL.format(totals.ebitda)}</td>
-                    <td className="py-2.5 px-3 text-right text-xs">{totals.receitaLiquida ? ((totals.ebitda/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2.5 px-3 pl-6 text-zinc-600">(-) Resultado Financeiro</td>
-                    <td className="py-2.5 px-3 text-right text-red-600">- {BRL.format(totals.resFinanceiro)}</td>
-                    <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.resFinanceiro/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
-                  </tr>
-                  <tr>
-                    <td className="py-2.5 px-3 pl-6 text-zinc-600">(-) Impostos sobre Lucro (IRPJ/CSLL)</td>
-                    <td className="py-2.5 px-3 text-right text-red-600">- {BRL.format(totals.impostosLucro)}</td>
-                    <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.impostosLucro/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
-                  </tr>
-                  <tr className="bg-zinc-900 text-white font-bold print:bg-zinc-900 print:text-white border-t-4 border-black">
-                    <td className="py-4 px-3 rounded-l-xl print:rounded-none">Lucro Líquido Final</td>
-                    <td className="py-4 px-3 text-right">{BRL.format(totals.lucroLiquido)}</td>
-                    <td className="py-4 px-3 text-right text-xs rounded-r-xl print:rounded-none">{totals.margemLiquida.toFixed(1)}%</td>
-                  </tr>
-                </tbody>
-              </table>
+              {renderDreTable()}
             </div>
           </Card>
         )}
@@ -685,73 +758,13 @@ export default function Page() {
                 <Card className={`p-6 ${reportType === 'geral' ? 'col-span-1 lg:col-span-2' : 'col-span-1 max-w-4xl mx-auto w-full'} print:border-none print:shadow-none`}>
                   <h2 className="font-bold text-lg mb-4">DRE Gerencial</h2>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b text-zinc-400 text-xs">
-                          <th className="text-left font-normal py-2">Descrição</th>
-                          <th className="text-right font-normal py-2">Valor</th>
-                          <th className="text-right font-normal py-2 w-20">AV%</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-zinc-100">
-                        <tr className="bg-emerald-50/50 print:bg-emerald-50">
-                          <td className="py-2.5 px-3 font-bold text-emerald-900">Receita Bruta</td>
-                          <td className="py-2.5 px-3 text-right font-bold text-emerald-900">{BRL.format(totals.receitaBruta)}</td>
-                          <td className="py-2.5 px-3 text-right text-xs text-emerald-700">{totals.receitaLiquida ? ((totals.receitaBruta/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
-                        </tr>
-                        <tr>
-                          <td className="py-2.5 px-3 pl-6 text-zinc-600">(-) Deduções (Impostos/Devoluções)</td>
-                          <td className="py-2.5 px-3 text-right text-red-600">- {BRL.format(totals.deducoes)}</td>
-                          <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.deducoes/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
-                        </tr>
-                        <tr className="bg-zinc-50 print:bg-zinc-100 font-semibold border-t-2 border-zinc-200">
-                          <td className="py-2.5 px-3">Receita Líquida</td>
-                          <td className="py-2.5 px-3 text-right">{BRL.format(totals.receitaLiquida)}</td>
-                          <td className="py-2.5 px-3 text-right text-xs text-zinc-500">100.0%</td>
-                        </tr>
-                        <tr>
-                          <td className="py-2.5 px-3 pl-6 text-zinc-600">(-) CMV / CSV (Variáveis)</td>
-                          <td className="py-2.5 px-3 text-right text-red-600">- {BRL.format(totals.cmvCsv)}</td>
-                          <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.cmvCsv/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
-                        </tr>
-                        <tr className="bg-zinc-50 print:bg-zinc-100 font-semibold border-t-2 border-zinc-200">
-                          <td className="py-2.5 px-3">Lucro Bruto</td>
-                          <td className="py-2.5 px-3 text-right">{BRL.format(totals.lucroBruto)}</td>
-                          <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.lucroBruto/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
-                        </tr>
-                        <tr>
-                          <td className="py-2.5 px-3 pl-6 text-zinc-600">(-) Despesas Operacionais</td>
-                          <td className="py-2.5 px-3 text-right text-red-600">- {BRL.format(totals.despOperacionais)}</td>
-                          <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.despOperacionais/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
-                        </tr>
-                        <tr className="bg-zinc-50 print:bg-zinc-100 font-semibold border-t-2 border-zinc-200 text-violet-900">
-                          <td className="py-2.5 px-3">EBITDA (Geração de Caixa)</td>
-                          <td className="py-2.5 px-3 text-right">{BRL.format(totals.ebitda)}</td>
-                          <td className="py-2.5 px-3 text-right text-xs">{totals.receitaLiquida ? ((totals.ebitda/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
-                        </tr>
-                        <tr>
-                          <td className="py-2.5 px-3 pl-6 text-zinc-600">(-) Resultado Financeiro</td>
-                          <td className="py-2.5 px-3 text-right text-red-600">- {BRL.format(totals.resFinanceiro)}</td>
-                          <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.resFinanceiro/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
-                        </tr>
-                        <tr>
-                          <td className="py-2.5 px-3 pl-6 text-zinc-600">(-) Impostos sobre Lucro (IRPJ/CSLL)</td>
-                          <td className="py-2.5 px-3 text-right text-red-600">- {BRL.format(totals.impostosLucro)}</td>
-                          <td className="py-2.5 px-3 text-right text-xs text-zinc-500">{totals.receitaLiquida ? ((totals.impostosLucro/totals.receitaLiquida)*100).toFixed(1) : 0}%</td>
-                        </tr>
-                        <tr className="bg-zinc-900 text-white font-bold print:bg-zinc-900 print:text-white border-t-4 border-black">
-                          <td className="py-4 px-3 rounded-l-xl print:rounded-none">Lucro Líquido Final</td>
-                          <td className="py-4 px-3 text-right">{BRL.format(totals.lucroLiquido)}</td>
-                          <td className="py-4 px-3 text-right text-xs rounded-r-xl print:rounded-none">{totals.margemLiquida.toFixed(1)}%</td>
-                        </tr>
-                      </tbody>
-                    </table>
+                    {renderDreTable()}
                   </div>
                 </Card>
               )}
 
               {/* RECEITAS */}
-              {(reportType === 'geral' || reportType === 'receitas') && (
+              {reportType === 'receitas' && (
                 <div className={`space-y-6 ${reportType === 'receitas' ? 'col-span-1 max-w-4xl mx-auto w-full' : ''}`}>
                   <Card className="p-6 bg-emerald-50 border-emerald-200 print:border-2 print:border-zinc-200 print:bg-white">
                     <h3 className="font-bold text-lg mb-2 flex items-center gap-2 text-emerald-900 print:text-zinc-900"><TrendingUp className="w-5 h-5"/> Total de Receitas</h3>
@@ -769,7 +782,7 @@ export default function Page() {
               )}
 
               {/* DESPESAS: Top Fornecedores */}
-              {(reportType === 'geral' || reportType === 'despesas') && (
+              {reportType === 'despesas' && (
                 <Card className={`p-6 print:border-none print:shadow-none ${reportType === 'despesas' ? 'col-span-1 max-w-4xl mx-auto w-full' : ''}`}>
                   <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><ShoppingCart className="w-5 h-5 text-violet-600 print:text-zinc-900"/> Principais Fornecedores</h3>
                   <div className="overflow-x-auto">
@@ -803,7 +816,7 @@ export default function Page() {
               )}
 
               {/* Categorias e Impostos */}
-              {(reportType === 'geral' || reportType === 'despesas') && (
+              {reportType === 'despesas' && (
                 <div className={`space-y-6 ${reportType === 'despesas' ? 'col-span-1 max-w-4xl mx-auto w-full' : ''}`}>
                   <Card className="p-6 print:border-none print:shadow-none">
                     <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><PieChart className="w-5 h-5 text-amber-500 print:text-zinc-900"/> Despesas por Categoria</h3>
