@@ -46,6 +46,7 @@ export default function Page() {
   const [empresaFiltro, setEmpresaFiltro] = useState<string>('TODAS');
   const [dupWarning, setDupWarning] = useState<string>("");
   const [editingId, setEditingId] = useState<string|null>(null);
+  const [reportType, setReportType] = useState<'geral'|'dre'|'despesas'|'receitas'>('geral');
 
   const fetchData = useCallback(() => {
     fetch('/api/transactions', { cache: 'no-store' })
@@ -429,9 +430,9 @@ export default function Page() {
 
   return (
     <div className="min-h-screen bg-[#FAFAFA]">
-      <header className="sticky top-0 z-20 bg-white/80 backdrop-blur border-b border-zinc-100">
-        <div className="max-w-[1400px] mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3"><div className="w-8 h-8 bg-violet-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">F</div><span className="font-bold">Financeiro Parceiro</span><span className="text-xs bg-emerald-50 text-emerald-700 px-2 py-1 rounded-full">{transactions.length} transações</span></div>
+      <header className="bg-white border-b sticky top-0 z-40 print:hidden">
+        <div className="max-w-[1400px] mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-6"><div className="w-8 h-8 bg-violet-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">F</div><span className="font-bold">Financeiro Parceiro</span><span className="text-xs bg-emerald-50 text-emerald-700 px-2 py-1 rounded-full">{transactions.length} transações</span></div>
           <div className="flex flex-1 max-w-xl mx-auto md:mx-4 items-center gap-2">
             <input type="month" value={mesFiltro} onChange={e=>setMesFiltro(e.target.value)} className="bg-zinc-100 border-none rounded-xl px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-violet-600" />
             <select value={empresaFiltro} onChange={e=>setEmpresaFiltro(e.target.value)} className="bg-zinc-100 border-none rounded-xl px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-violet-600 flex-1">
@@ -448,7 +449,7 @@ export default function Page() {
       </header>
 
       <main className="max-w-[1400px] mx-auto px-4 py-6">
-        <div className="flex gap-2 p-2 bg-white rounded-xl shadow-sm overflow-x-auto w-full max-w-full mb-6">
+        <div className="flex gap-2 p-2 bg-white rounded-xl shadow-sm overflow-x-auto w-full max-w-full mb-6 print:hidden">
           {[
             { id: 'dash', icon: PieChart, label: 'Dashboard' },
             { id: 'dre', icon: Activity, label: 'DRE' },
@@ -509,121 +510,160 @@ export default function Page() {
         )}
 
         {tab==='reports' && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="space-y-6 print:m-0 print:p-0 print:block">
+            
+            {/* Sub-tabs menu - Hidden in Print */}
+            <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center print:hidden">
+              <div className="flex bg-zinc-100 p-1 rounded-xl w-full sm:w-auto overflow-x-auto">
+                <button onClick={()=>setReportType('geral')} className={`px-4 py-2 text-sm rounded-lg font-medium whitespace-nowrap transition-colors ${reportType==='geral' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}>📊 Geral</button>
+                <button onClick={()=>setReportType('dre')} className={`px-4 py-2 text-sm rounded-lg font-medium whitespace-nowrap transition-colors ${reportType==='dre' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}>📈 Só DRE</button>
+                <button onClick={()=>setReportType('despesas')} className={`px-4 py-2 text-sm rounded-lg font-medium whitespace-nowrap transition-colors ${reportType==='despesas' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}>📉 Despesas</button>
+                <button onClick={()=>setReportType('receitas')} className={`px-4 py-2 text-sm rounded-lg font-medium whitespace-nowrap transition-colors ${reportType==='receitas' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}>💰 Receitas</button>
+              </div>
+              <div className="flex gap-2 w-full sm:w-auto">
+                <button onClick={()=>window.print()} className="flex-1 sm:flex-none bg-zinc-900 hover:bg-black text-white px-4 py-2 rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition"><FileSpreadsheet className="w-4 h-4"/> Salvar PDF</button>
+                <button onClick={exportCsv} className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition"><Download className="w-4 h-4"/> Excel (CSV)</button>
+              </div>
+            </div>
+
+            <div className={`grid grid-cols-1 ${reportType === 'geral' ? 'lg:grid-cols-2' : ''} gap-6`}>
+              
               {/* DRE Waterfall Visulization */}
-              <Card className="p-6 col-span-1 lg:col-span-2 bg-gradient-to-br from-zinc-900 to-black text-white">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="font-bold text-xl flex items-center gap-2"><TrendingUp className="w-5 h-5 text-emerald-400"/> DRE Visual (Demonstração do Resultado)</h2>
-                  <button onClick={exportCsv} className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-xl text-xs font-medium flex items-center gap-2 transition"><Download className="w-4 h-4"/> Baixar CSV Completo</button>
-                </div>
-                
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex justify-between text-sm mb-1"><span>Receita Bruta</span><span className="font-bold text-emerald-400">{BRL.format(totals.receitaBruta)}</span></div>
-                    <div className="w-full bg-white/10 rounded-full h-3"><div className="bg-emerald-400 h-3 rounded-full" style={{width: '100%'}}></div></div>
+              {(reportType === 'geral' || reportType === 'dre') && (
+                <Card className={`p-6 ${reportType === 'geral' ? 'col-span-1 lg:col-span-2' : 'col-span-1 max-w-4xl mx-auto w-full'} bg-gradient-to-br from-zinc-900 to-black text-white print:bg-none print:bg-white print:text-black print:shadow-none print:border-2 print:border-zinc-200`}>
+                  <div className="flex items-center justify-between mb-6">
+                    <h2 className="font-bold text-xl flex items-center gap-2"><TrendingUp className="w-5 h-5 text-emerald-400 print:text-zinc-800"/> DRE Visual (Demonstração do Resultado)</h2>
                   </div>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                    <div className="bg-white/5 p-4 rounded-xl border border-white/10">
-                      <div className="text-xs text-zinc-400 mb-1">(-) Impostos</div>
-                      <div className="font-bold text-red-400">{BRL.format(totals.imposto)}</div>
-                      <div className="text-[10px] mt-1 text-zinc-500">{totals.receitaBruta ? ((totals.imposto/totals.receitaBruta)*100).toFixed(1) : 0}% da Receita</div>
-                    </div>
-                    <div className="bg-white/5 p-4 rounded-xl border border-white/10">
-                      <div className="text-xs text-zinc-400 mb-1">(-) Fornecedores/Variável</div>
-                      <div className="font-bold text-red-400">{BRL.format(totals.fornecedor + totals.variavel)}</div>
-                      <div className="text-[10px] mt-1 text-zinc-500">{totals.receitaBruta ? (((totals.fornecedor + totals.variavel)/totals.receitaBruta)*100).toFixed(1) : 0}% da Receita</div>
-                    </div>
-                    <div className="bg-white/5 p-4 rounded-xl border border-white/10">
-                      <div className="text-xs text-zinc-400 mb-1">(-) Custos Fixos</div>
-                      <div className="font-bold text-red-400">{BRL.format(totals.fixo)}</div>
-                      <div className="text-[10px] mt-1 text-zinc-500">{totals.receitaBruta ? ((totals.fixo/totals.receitaBruta)*100).toFixed(1) : 0}% da Receita</div>
-                    </div>
-                  </div>
-
-                  <div className="pt-4 mt-4 border-t border-white/10 flex items-end justify-between">
+                  <div className="space-y-4">
                     <div>
-                      <div className="text-sm text-zinc-400 mb-1">Lucro Líquido Final</div>
-                      <div className="text-3xl font-black text-emerald-400">{BRL.format(totals.lucroLiquido)}</div>
+                      <div className="flex justify-between text-sm mb-1"><span>Receita Bruta</span><span className="font-bold text-emerald-400 print:text-zinc-900">{BRL.format(totals.receitaBruta)}</span></div>
+                      <div className="w-full bg-white/10 print:bg-zinc-100 rounded-full h-3"><div className="bg-emerald-400 print:bg-zinc-800 h-3 rounded-full" style={{width: '100%'}}></div></div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-sm text-zinc-400 mb-1">Margem de Lucro</div>
-                      <div className="text-2xl font-bold text-white">{totals.margem.toFixed(1)}%</div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                      <div className="bg-white/5 print:bg-white print:border-zinc-300 p-4 rounded-xl border border-white/10">
+                        <div className="text-xs text-zinc-400 print:text-zinc-600 mb-1">(-) Impostos</div>
+                        <div className="font-bold text-red-400 print:text-zinc-900">{BRL.format(totals.imposto)}</div>
+                        <div className="text-[10px] mt-1 text-zinc-500">{totals.receitaBruta ? ((totals.imposto/totals.receitaBruta)*100).toFixed(1) : 0}% da Receita</div>
+                      </div>
+                      <div className="bg-white/5 print:bg-white print:border-zinc-300 p-4 rounded-xl border border-white/10">
+                        <div className="text-xs text-zinc-400 print:text-zinc-600 mb-1">(-) Fornecedores/Variável</div>
+                        <div className="font-bold text-red-400 print:text-zinc-900">{BRL.format(totals.fornecedor + totals.variavel)}</div>
+                        <div className="text-[10px] mt-1 text-zinc-500">{totals.receitaBruta ? (((totals.fornecedor + totals.variavel)/totals.receitaBruta)*100).toFixed(1) : 0}% da Receita</div>
+                      </div>
+                      <div className="bg-white/5 print:bg-white print:border-zinc-300 p-4 rounded-xl border border-white/10">
+                        <div className="text-xs text-zinc-400 print:text-zinc-600 mb-1">(-) Custos Fixos</div>
+                        <div className="font-bold text-red-400 print:text-zinc-900">{BRL.format(totals.fixo)}</div>
+                        <div className="text-[10px] mt-1 text-zinc-500">{totals.receitaBruta ? ((totals.fixo/totals.receitaBruta)*100).toFixed(1) : 0}% da Receita</div>
+                      </div>
+                    </div>
+
+                    <div className="pt-4 mt-4 border-t border-white/10 print:border-zinc-200 flex items-end justify-between">
+                      <div>
+                        <div className="text-sm text-zinc-400 print:text-zinc-600 mb-1">Lucro Líquido Final</div>
+                        <div className="text-3xl font-black text-emerald-400 print:text-zinc-900">{BRL.format(totals.lucroLiquido)}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm text-zinc-400 print:text-zinc-600 mb-1">Margem de Lucro</div>
+                        <div className="text-2xl font-bold text-white print:text-zinc-900">{totals.margem.toFixed(1)}%</div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </Card>
+                </Card>
+              )}
 
-              {/* Top 10 Fornecedores */}
-              <Card className="p-6">
-                <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><ShoppingCart className="w-5 h-5 text-violet-600"/> Top 10 Fornecedores</h3>
-                <div className="space-y-4">
-                  {totals.topFornecedores.length === 0 ? (
-                    <div className="text-sm text-zinc-500 text-center py-8">Nenhum pagamento registrado neste mês.</div>
-                  ) : (
-                    totals.topFornecedores.map((forn: any, idx: number) => {
-                      const pct = totals.saidas ? (forn.valor / totals.saidas) * 100 : 0;
-                      return (
-                        <div key={idx}>
-                          <div className="flex justify-between text-xs mb-1">
-                            <span className="font-medium text-zinc-700 truncate pr-4">{idx+1}. {forn.nome}</span>
-                            <span className="font-bold whitespace-nowrap">{BRL.format(forn.valor)}</span>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <div className="flex-1 bg-zinc-100 rounded-full h-2 overflow-hidden">
-                              <div className="bg-violet-500 h-2 rounded-full" style={{width: `${Math.min(pct, 100)}%`}}></div>
-                            </div>
-                            <span className="text-[10px] text-zinc-500 font-medium w-8 text-right">{pct.toFixed(1)}%</span>
-                          </div>
-                        </div>
-                      );
-                    })
+              {/* RECEITAS */}
+              {(reportType === 'geral' || reportType === 'receitas') && (
+                <div className={`space-y-6 ${reportType === 'receitas' ? 'col-span-1 max-w-4xl mx-auto w-full' : ''}`}>
+                  <Card className="p-6 bg-emerald-50 border-emerald-200 print:border-2 print:border-zinc-200 print:bg-white">
+                    <h3 className="font-bold text-lg mb-2 flex items-center gap-2 text-emerald-900 print:text-zinc-900"><TrendingUp className="w-5 h-5"/> Total de Receitas</h3>
+                    <div className="text-3xl font-black text-emerald-700 print:text-zinc-900">{BRL.format(totals.receitaBruta)}</div>
+                    <div className="text-xs text-emerald-600/80 mt-1 print:text-zinc-500">Soma de todas as entradas do período</div>
+                  </Card>
+                  
+                  {reportType === 'receitas' && (
+                    <Card className="p-6 print:border-2 print:border-zinc-200 print:shadow-none">
+                      <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Target className="w-5 h-5 text-emerald-600 print:text-zinc-900"/> Receitas Agrupadas</h3>
+                      <div className="text-sm text-zinc-500">A sua receita no momento é centralizada. Para ver a divisão, utilize os filtros de empresa no topo do sistema.</div>
+                    </Card>
                   )}
                 </div>
-              </Card>
+              )}
 
-              {/* Categorias e Impostos */}
-              <div className="space-y-6">
-                <Card className="p-6">
-                  <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><PieChart className="w-5 h-5 text-amber-500"/> Despesas por Categoria</h3>
+              {/* DESPESAS: Top 10 Fornecedores */}
+              {(reportType === 'geral' || reportType === 'despesas') && (
+                <Card className={`p-6 print:border-2 print:border-zinc-200 print:shadow-none ${reportType === 'despesas' ? 'col-span-1 max-w-4xl mx-auto w-full' : ''}`}>
+                  <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><ShoppingCart className="w-5 h-5 text-violet-600 print:text-zinc-900"/> Top 10 Fornecedores</h3>
                   <div className="space-y-4">
-                    {Object.entries(totals.porCategoria)
-                      .sort((a:any, b:any) => b[1] - a[1])
-                      .slice(0, 8)
-                      .map(([cat, val]: any, idx) => {
-                        const pct = totals.saidas ? (val / totals.saidas) * 100 : 0;
+                    {totals.topFornecedores.length === 0 ? (
+                      <div className="text-sm text-zinc-500 text-center py-8">Nenhum pagamento registrado neste mês.</div>
+                    ) : (
+                      totals.topFornecedores.map((forn: any, idx: number) => {
+                        const pct = totals.saidas ? (forn.valor / totals.saidas) * 100 : 0;
                         return (
-                          <div key={idx}>
+                          <div key={idx} className="print:break-inside-avoid">
                             <div className="flex justify-between text-xs mb-1">
-                              <span className="font-medium text-zinc-700 truncate pr-4">{cat}</span>
-                              <span className="font-bold whitespace-nowrap">{BRL.format(val)}</span>
+                              <span className="font-medium text-zinc-700 print:text-zinc-900 truncate pr-4">{idx+1}. {forn.nome}</span>
+                              <span className="font-bold whitespace-nowrap print:text-zinc-900">{BRL.format(forn.valor)}</span>
                             </div>
                             <div className="flex items-center gap-3">
-                              <div className="flex-1 bg-zinc-100 rounded-full h-2 overflow-hidden">
-                                <div className="bg-amber-500 h-2 rounded-full" style={{width: `${Math.min(pct, 100)}%`}}></div>
+                              <div className="flex-1 bg-zinc-100 rounded-full h-2 overflow-hidden print:border print:border-zinc-300">
+                                <div className="bg-violet-500 print:bg-zinc-500 h-2 rounded-full" style={{width: `${Math.min(pct, 100)}%`}}></div>
                               </div>
-                              <span className="text-[10px] text-zinc-500 font-medium w-8 text-right">{pct.toFixed(1)}%</span>
+                              <span className="text-[10px] text-zinc-500 print:text-zinc-800 font-medium w-8 text-right">{pct.toFixed(1)}%</span>
                             </div>
                           </div>
                         );
-                    })}
+                      })
+                    )}
                   </div>
                 </Card>
+              )}
 
-                <div className="grid grid-cols-2 gap-4">
-                  <Card className="p-5 border-amber-200 bg-amber-50 text-amber-900">
-                    <h3 className="font-bold text-xs mb-1 text-amber-900 opacity-80">Provisão Impostos</h3>
-                    <div className="text-xl font-black">{BRL.format(totals.impostosProvisao)}</div>
-                    <div className="text-[10px] mt-1 opacity-70">Total das Guias retidas</div>
+              {/* Categorias e Impostos */}
+              {(reportType === 'geral' || reportType === 'despesas') && (
+                <div className={`space-y-6 ${reportType === 'despesas' ? 'col-span-1 max-w-4xl mx-auto w-full' : ''}`}>
+                  <Card className="p-6 print:border-2 print:border-zinc-200 print:shadow-none">
+                    <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><PieChart className="w-5 h-5 text-amber-500 print:text-zinc-900"/> Despesas por Categoria</h3>
+                    <div className="space-y-4">
+                      {Object.entries(totals.porCategoria)
+                        .sort((a:any, b:any) => b[1] - a[1])
+                        .slice(0, 15) // Expand to 15 if it's the isolated view
+                        .map(([cat, val]: any, idx) => {
+                          const pct = totals.saidas ? (val / totals.saidas) * 100 : 0;
+                          return (
+                            <div key={idx} className="print:break-inside-avoid">
+                              <div className="flex justify-between text-xs mb-1">
+                                <span className="font-medium text-zinc-700 print:text-zinc-900 truncate pr-4">{cat}</span>
+                                <span className="font-bold whitespace-nowrap print:text-zinc-900">{BRL.format(val)}</span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <div className="flex-1 bg-zinc-100 rounded-full h-2 overflow-hidden print:border print:border-zinc-300">
+                                  <div className="bg-amber-500 print:bg-zinc-500 h-2 rounded-full" style={{width: `${Math.min(pct, 100)}%`}}></div>
+                                </div>
+                                <span className="text-[10px] text-zinc-500 print:text-zinc-800 font-medium w-8 text-right">{pct.toFixed(1)}%</span>
+                              </div>
+                            </div>
+                          );
+                      })}
+                    </div>
                   </Card>
-                  <Card className="p-5 bg-violet-600 text-white shadow-lg shadow-violet-200">
-                    <h3 className="font-bold text-xs mb-1 opacity-80">Saldo Futuro</h3>
-                    <div className="text-xl font-black">{BRL.format((totals.saldoHistoricoRealizado||0) + (totals.aReceber||0) - (totals.aPagar||0))}</div>
-                    <div className="text-[10px] mt-1 opacity-70">Saldo final projetado</div>
-                  </Card>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <Card className="p-5 border-amber-200 bg-amber-50 text-amber-900 print:border-2 print:border-zinc-200 print:bg-white print:text-zinc-900 print:shadow-none">
+                      <h3 className="font-bold text-xs mb-1 text-amber-900 print:text-zinc-900 opacity-80">Provisão Impostos</h3>
+                      <div className="text-xl font-black">{BRL.format(totals.impostosProvisao)}</div>
+                      <div className="text-[10px] mt-1 opacity-70 print:opacity-100">Total das Guias retidas</div>
+                    </Card>
+                    <Card className="p-5 bg-violet-600 text-white shadow-lg shadow-violet-200 print:border-2 print:border-zinc-200 print:bg-white print:text-zinc-900 print:shadow-none">
+                      <h3 className="font-bold text-xs mb-1 opacity-80 print:opacity-100">Saldo Futuro</h3>
+                      <div className="text-xl font-black">{BRL.format((totals.saldoHistoricoRealizado||0) + (totals.aReceber||0) - (totals.aPagar||0))}</div>
+                      <div className="text-[10px] mt-1 opacity-70 print:opacity-100">Saldo final projetado</div>
+                    </Card>
+                  </div>
                 </div>
-              </div>
+              )}
 
             </div>
           </div>
@@ -704,8 +744,8 @@ export default function Page() {
         <Card className="mt-6"><div className="flex justify-between p-4"><h3 className="font-semibold">Todas Transações</h3><div className="relative"><Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar duplicado..." className="pl-9 pr-3 py-2 bg-zinc-50 border rounded-xl text-sm w-64"/></div></div><div className="overflow-x-auto px-4 pb-4"><table className="w-full text-sm"><thead><tr className="text-zinc-400 text-xs"><th className="text-left py-2">Venc.</th><th className="text-left py-2">Descrição</th><th className="text-left py-2">Status</th><th className="text-right py-2">Valor</th><th className="text-right py-2 w-24">Ações</th></tr></thead><tbody>{filtered.map(t=><tr key={t.id} className="border-t hover:bg-zinc-50 group"><td className="py-3 text-xs">{formatDateView((t as any).data_vencimento || t.data)}</td><td className="py-3"><div className="font-medium text-xs">{t.descricao}</div>{(t.itens || t.impostos || t.observacao) && (<div className="text-[10px] text-zinc-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">{t.itens && <span>📦 {t.itens}</span>}{t.impostos && <span>🏛 Impostos: {t.impostos}</span>}{t.observacao && <span>📝 {t.observacao}</span>}</div>)}</td><td className="py-3"><span className={`px-2 py-1 rounded-full text-[10px] ${(t as any).status==='a_pagar' ? 'bg-amber-100 text-amber-700' : (t as any).status==='a_receber' ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100'}`}>{(t as any).status||'realizado'}</span></td><td className="py-3 text-right font-bold text-xs">{BRL.format(Number(t.valor))}</td><td className="py-3 text-right text-zinc-400 flex justify-end gap-3 opacity-10 md:opacity-0 group-hover:opacity-100 transition-opacity"><button onClick={()=>toggleStatus(t)} className="hover:text-emerald-600" title="Conciliar / Desconciliar">{['pago','realizado'].includes((t as any).status||'realizado') ? <Undo2 className="w-4 h-4"/> : <Check className="w-4 h-4"/>}</button><button onClick={()=>editar(t)} className="hover:text-violet-600" title="Editar"><Pencil className="w-4 h-4"/></button><button onClick={()=>excluir(t.id)} className="hover:text-red-600" title="Excluir"><Trash2 className="w-4 h-4"/></button></td></tr>)}</tbody></table></div></Card>
       </main>
 
-      <button onClick={()=>setChatOpen(!chatOpen)} className="fixed bottom-6 right-6 bg-violet-600 text-white rounded-full w-14 h-14 flex items-center justify-center shadow-2xl z-30"><MessageCircle className="w-6 h-6"/></button>
-      <button onClick={()=>{setModalMode('despesa'); setShowModal(true)}} className="fixed bottom-6 right-24 bg-zinc-900 text-white rounded-full w-14 h-14 flex items-center justify-center shadow-xl z-30"><Plus/></button>
+      <button onClick={()=>setChatOpen(!chatOpen)} className="fixed bottom-6 right-6 bg-violet-600 text-white rounded-full w-14 h-14 flex items-center justify-center shadow-2xl z-30 print:hidden"><MessageCircle className="w-6 h-6"/></button>
+      <button onClick={()=>{setModalMode('despesa'); setShowModal(true)}} className="fixed bottom-6 right-24 bg-zinc-900 text-white rounded-full w-14 h-14 flex items-center justify-center shadow-xl z-30 print:hidden"><Plus/></button>
 
       {chatOpen && (<div className="fixed bottom-24 right-6 w-[92vw] md:w-[380px] z-40"><Card className="shadow-2xl border-violet-200 overflow-hidden flex flex-col max-h-[70vh]"><div className="bg-violet-600 p-4 flex justify-between items-center text-white"><div className="flex items-center gap-2"><Sparkles className="w-4 h-4"/><span className="font-bold text-sm">Controller IA</span></div><button onClick={()=>setChatOpen(false)}><X className="w-4 h-4"/></button></div><div className="p-4 overflow-y-auto flex-1 bg-violet-50/30 text-sm whitespace-pre-wrap">{aiLoading ? "Analisando..." : aiAnswer}</div><div className="p-3 border-t bg-white flex gap-2"><input value={aiQuestion} onChange={e=>setAiQuestion(e.target.value)} onKeyDown={e=>e.key==='Enter'&&askAI()} placeholder="Pergunte algo..." className="flex-1 border rounded-xl px-3 py-2.5 text-sm"/><button onClick={askAI} className="bg-violet-600 text-white p-2.5 rounded-xl"><Send className="w-4 h-4"/></button></div></Card></div>)}
 
