@@ -5,7 +5,7 @@ import { Transaction, supabase } from '@/lib/supabase';
 import { generateMockTransactions } from '@/lib/mock';
 import { classifyWithAI } from '@/lib/classify';
 import { Plus, Trash2, ArrowUpCircle, ArrowDownCircle, Search, Edit2, Pencil, Save, X, Calendar, Upload, BarChart3, Clock, Wallet, Settings, LogOut, Check, Undo2, PieChart as PieChartIcon, Activity, Layers, Target, BarChart as BarChartIcon, TrendingUp, Download, TrendingDown, MessageCircle, Sparkles, Send, AlertTriangle, FileSpreadsheet, ShoppingCart, ChevronDown, ChevronRight } from 'lucide-react';
-import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area, AreaChart, PieChart, Pie, Cell, Legend } from 'recharts';
+import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area, AreaChart, PieChart, Pie, Cell, Legend, BarChart } from 'recharts';
 import Papa from 'papaparse';
 import { CATEGORIAS } from '@/lib/categorias';
 
