@@ -90,13 +90,17 @@ export default function Page() {
     const flattened: Transaction[] = [];
     list.forEach(t => {
       let baseT = { ...t };
-      if ((!t.rateio_filiais || t.rateio_filiais.length === 0) && (!t.rateio_categorias || t.rateio_categorias.length === 0)) {
+      let rf = typeof t.rateio_filiais === 'string' ? JSON.parse(t.rateio_filiais) : (t.rateio_filiais || []);
+      let rc = typeof t.rateio_categorias === 'string' ? JSON.parse(t.rateio_categorias) : (t.rateio_categorias || []);
+      
+      if (rf.length === 0 && rc.length === 0) {
         flattened.push(baseT);
         return;
       }
-      if (t.rateio_filiais && t.rateio_filiais.length > 0) {
-        t.rateio_filiais.forEach((rf: any) => {
-          flattened.push({ ...baseT, empresa: rf.empresa, categoria: rf.categoria || baseT.categoria, valor: rf.valor });
+      
+      if (rf.length > 0) {
+        rf.forEach((r: any) => {
+          flattened.push({ ...baseT, empresa: r.empresa, categoria: r.categoria || baseT.categoria, valor: r.valor, rateio_filiais: [], rateio_categorias: [] });
         });
         return;
       }
@@ -129,7 +133,11 @@ export default function Page() {
   const filtered = useMemo(()=> {
     let tr = transactions.filter(t => (t.descricao || "").toLowerCase().includes(search.toLowerCase()));
     if (empresaFiltro !== 'TODAS') {
-      tr = tr.filter(t => t.empresa === empresaFiltro || t.rateio_filiais?.some(r => r.empresa === empresaFiltro));
+      tr = tr.filter(t => {
+        if (t.empresa === empresaFiltro) return true;
+        let rf = typeof t.rateio_filiais === 'string' ? JSON.parse(t.rateio_filiais) : (t.rateio_filiais || []);
+        return rf.some((r: any) => r.empresa === empresaFiltro);
+      });
     }
     
     if (listFilter === 'pendentes') {
@@ -320,8 +328,7 @@ export default function Page() {
   const trendData = useMemo(()=> {
     const map: Record<string, {receita:number, deducoes:number, cmv:number, desp:number, resFin:number, imp:number}> = {};
     
-    transactions.forEach(t => {
-      if (empresaFiltro !== 'TODAS' && (t as any).empresa !== empresaFiltro) return;
+    contas.trGeral.forEach(t => {
       
       const dateStr = (t as any).data_vencimento || t.data;
       if (!dateStr || dateStr.length < 7) return;
@@ -351,7 +358,7 @@ export default function Page() {
       const [y, m] = mes.split('-');
       return { mes: `${m}/${y.slice(2)}`, EBITDA: ebitda, Lucro: lucro };
     });
-  }, [transactions, empresaFiltro]);
+  }, [contas]);
 
   function checkDuplicate(descricao: string, valor: string, data: string) {
     const desc = descricao || "";
@@ -468,8 +475,10 @@ export default function Page() {
 
   function editar(t: any) {
     if (t.descricao !== '___CONFIG_FECHAMENTO___' && fechamentoMes && (t.data_vencimento||t.data).slice(0,7) <= fechamentoMes) { alert(`Este mês está fechado/trancado (${fechamentoMes}). O lançamento é apenas de leitura.`); return; }
-    setForm({ descricao: t.descricao, valor: String(t.valor), data: t.data.slice(0,10), vencimento: (t.data_vencimento||t.data).slice(0,10), tipo: t.tipo, categoria: t.categoria, status: t.status||'realizado', observacao: t.observacao||'', itens: t.itens||'', impostos: t.impostos ? String(t.impostos) : '', impostos_federais: '', empresa: t.empresa || 'BOAH MATRIZ', recorrente: t.recorrente || false, recorrente_meses: 12, rateio_filiais: t.rateio_filiais || [], rateio_categorias: t.rateio_categorias || [] });
-    if (t.rateio_filiais?.length > 0 || t.rateio_categorias?.length > 0) setShowRateio(true); else setShowRateio(false);
+    let rf = typeof t.rateio_filiais === 'string' ? JSON.parse(t.rateio_filiais) : (t.rateio_filiais || []);
+    let rc = typeof t.rateio_categorias === 'string' ? JSON.parse(t.rateio_categorias) : (t.rateio_categorias || []);
+    setForm({ descricao: t.descricao, valor: String(t.valor), data: t.data.slice(0,10), vencimento: (t.data_vencimento||t.data).slice(0,10), tipo: t.tipo, categoria: t.categoria, status: t.status||'realizado', observacao: t.observacao||'', itens: t.itens||'', impostos: t.impostos ? String(t.impostos) : '', impostos_federais: '', empresa: t.empresa || 'BOAH MATRIZ', recorrente: t.recorrente || false, recorrente_meses: 12, rateio_filiais: rf, rateio_categorias: rc });
+    if (rf.length > 0 || rc.length > 0) setShowRateio(true); else setShowRateio(false);
     setEditingId(t.id);
     setModalMode(t.tipo === 'Entrada' ? 'receita' : 'despesa');
     setShowModal(true);
@@ -609,7 +618,7 @@ export default function Page() {
   }
 
   function exportCsv() {
-    const csv = Papa.unparse(transactions.map(t=>({ Data: t.data, Vencimento: (t as any).data_vencimento||t.data, Descricao: t.descricao, Categoria: t.categoria, Tipo: t.tipo, Status: (t as any).status||'realizado', Valor: t.valor })));
+    const csv = Papa.unparse(contas.trGeral.map(t=>({ Data: t.data, Vencimento: (t as any).data_vencimento||t.data, Empresa: (t as any).empresa || 'BOAH MATRIZ', Descricao: t.descricao, Categoria: t.categoria, Tipo: t.tipo, Status: (t as any).status||'realizado', Valor: t.valor })));
     const blob = new Blob([csv], {type:'text/csv'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download=`financeiro-${new Date().toISOString().slice(0,10)}.csv`; a.click();
   }
 
