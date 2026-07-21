@@ -400,8 +400,32 @@ export default function Page() {
       }
       
       if (editingId) {
-        const nova: any = { id: editingId, data: form.data || form.vencimento, descricao: form.descricao.toUpperCase(), categoria: form.categoria, tipo: form.tipo, valor: Number(form.valor), status: form.status, data_vencimento: form.vencimento, observacao: form.observacao, itens: form.itens, impostos: form.impostos ? Number(form.impostos) : null, empresa: form.empresa, recorrente: form.recorrente };
-        setTransactions(transactions.map(t => t.id === editingId ? nova : t)); setShowModal(false); setEditingId(null);
+        const isSaida = form.tipo === 'Saída';
+        const iss = Number(form.impostos || 0);
+        const fed = Number(form.impostos_federais || 0);
+        const netValor = isSaida ? (Number(form.valor) - iss - fed) : Number(form.valor);
+
+        const nova: any = { id: editingId, data: form.data || form.vencimento, descricao: form.descricao.toUpperCase(), categoria: form.categoria, tipo: form.tipo, valor: netValor, status: form.status, data_vencimento: form.vencimento, observacao: form.observacao, itens: form.itens, impostos: form.impostos ? Number(form.impostos) : null, empresa: form.empresa, recorrente: form.recorrente };
+        
+        const oldTx = transactions.find(t => t.id === editingId);
+        const oldDesc = oldTx?.descricao || '';
+        
+        const newTrans = transactions.map(t => {
+           if (t.id === editingId) return nova;
+           if (t.descricao === `GUIA DE IMPOSTO (ISS) REF. ${oldDesc}`) {
+               const updatedGuia = { ...t, valor: iss, descricao: `GUIA DE IMPOSTO (ISS) REF. ${form.descricao.toUpperCase()}` };
+               fetch('/api/transactions', { method: 'PATCH', body: JSON.stringify(updatedGuia) }).catch(e=>{});
+               return updatedGuia;
+           }
+           if (t.descricao === `GUIA DE IMPOSTO (FEDERAL) REF. ${oldDesc}`) {
+               const updatedGuia = { ...t, valor: fed, descricao: `GUIA DE IMPOSTO (FEDERAL) REF. ${form.descricao.toUpperCase()}` };
+               fetch('/api/transactions', { method: 'PATCH', body: JSON.stringify(updatedGuia) }).catch(e=>{});
+               return updatedGuia;
+           }
+           return t;
+        });
+
+        setTransactions(newTrans); setShowModal(false); setEditingId(null);
         try { await fetch('/api/transactions', { method: 'PATCH', body: JSON.stringify(nova) }); } catch(e){}
       } else {
         if (checkDuplicate(form.descricao, form.valor, form.vencimento)) { if (!confirm("Detectamos duplicado! Deseja salvar mesmo assim?")) return; }
@@ -479,7 +503,10 @@ export default function Page() {
     if (t.descricao !== '___CONFIG_FECHAMENTO___' && fechamentoMes && (t.data_vencimento||t.data).slice(0,7) <= fechamentoMes) { alert(`Este mês está fechado/trancado (${fechamentoMes}). O lançamento é apenas de leitura.`); return; }
     let rf = typeof t.rateio_filiais === 'string' ? JSON.parse(t.rateio_filiais) : (t.rateio_filiais || []);
     let rc = typeof t.rateio_categorias === 'string' ? JSON.parse(t.rateio_categorias) : (t.rateio_categorias || []);
-    setForm({ descricao: t.descricao, valor: String(t.valor), data: t.data.slice(0,10), vencimento: (t.data_vencimento||t.data).slice(0,10), tipo: t.tipo, categoria: t.categoria, status: t.status||'realizado', observacao: t.observacao||'', itens: t.itens||'', impostos: t.impostos ? String(t.impostos) : '', impostos_federais: '', empresa: t.empresa || 'BOAH MATRIZ', recorrente: t.recorrente || false, recorrente_meses: 12, rateio_filiais: rf, rateio_categorias: rc });
+    
+    const valorBruto = t.tipo === 'Saída' ? (Number(t.valor) + Number(t.impostos || 0) + Number((t as any).impostos_federais || 0)) : t.valor;
+    
+    setForm({ descricao: t.descricao, valor: String(valorBruto), data: t.data.slice(0,10), vencimento: (t.data_vencimento||t.data).slice(0,10), tipo: t.tipo, categoria: t.categoria, status: t.status||'realizado', observacao: t.observacao||'', itens: t.itens||'', impostos: t.impostos ? String(t.impostos) : '', impostos_federais: (t as any).impostos_federais ? String((t as any).impostos_federais) : '', empresa: t.empresa || 'BOAH MATRIZ', recorrente: t.recorrente || false, recorrente_meses: 12, rateio_filiais: rf, rateio_categorias: rc });
     if (rf.length > 0 || rc.length > 0) setShowRateio(true); else setShowRateio(false);
     setEditingId(t.id);
     setModalMode(t.tipo === 'Entrada' ? 'receita' : 'despesa');
