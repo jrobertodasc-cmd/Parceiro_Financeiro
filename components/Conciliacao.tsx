@@ -19,13 +19,14 @@ export default function Conciliacao({ contas, onSuccess }: ConciliacaoProps) {
   const [selectedSystem, setSelectedSystem] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(false);
   const [taxCategory, setTaxCategory] = useState('Taxa de Cartão');
+  const [empresaFiltro, setEmpresaFiltro] = useState<string>('TODAS');
   
-  // Apenas as contas pendentes do sistema
+  // Apenas as contas pendentes do sistema, filtradas pela filial
   const systemPendentes = useMemo(() => {
     return contas
-      .filter(t => t.status === 'a_pagar' || t.status === 'a_receber')
+      .filter(t => (t.status === 'a_pagar' || t.status === 'a_receber') && (empresaFiltro === 'TODAS' || t.empresa === empresaFiltro))
       .sort((a, b) => new Date(a.data_vencimento || a.data).getTime() - new Date(b.data_vencimento || b.data).getTime());
-  }, [contas]);
+  }, [contas, empresaFiltro]);
 
   // Função para parsear OFX (simplificado) ou CSV
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -133,7 +134,7 @@ export default function Conciliacao({ contas, onSuccess }: ConciliacaoProps) {
           tipo: tipoDif,
           categoria: taxCategory,
           status: tipoDif === 'Entrada' ? 'realizado' : 'pago',
-          empresa: selectedSystem[0]?.empresa || 'BOAH MATRIZ'
+          empresa: empresaFiltro !== 'TODAS' ? empresaFiltro : (selectedSystem[0]?.empresa || 'BOAH MATRIZ')
         };
         await fetch('/api/transactions', {
           method: 'POST',
@@ -167,7 +168,7 @@ export default function Conciliacao({ contas, onSuccess }: ConciliacaoProps) {
         tipo: bankItem.tipo,
         categoria: bankItem.tipo === 'Entrada' ? 'Outros' : 'Taxas e Juros',
         status: status,
-        empresa: 'BOAH MATRIZ'
+        empresa: empresaFiltro !== 'TODAS' ? empresaFiltro : 'BOAH MATRIZ'
       };
       await fetch('/api/transactions', {
         method: 'POST',
@@ -194,12 +195,28 @@ export default function Conciliacao({ contas, onSuccess }: ConciliacaoProps) {
             Cruze o extrato do seu banco ou lote de cartões com os títulos "A Pagar/Receber" do sistema.
           </p>
         </div>
-        <div className="relative overflow-hidden">
-          <input type="file" accept=".csv,.ofx" onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
-          <button className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 shadow-sm pointer-events-none">
-            <Upload className="w-4 h-4"/> 
-            Importar Extrato (OFX)
-          </button>
+        <div className="flex flex-col md:flex-row gap-3 items-center w-full md:w-auto">
+          <select 
+            value={empresaFiltro} 
+            onChange={e => { setEmpresaFiltro(e.target.value); setSelectedSystem([]); }}
+            className="bg-white border-emerald-200 text-emerald-900 rounded-xl px-3 py-2 text-sm font-medium focus:ring-2 focus:ring-emerald-500 w-full md:w-auto"
+          >
+            <option value="TODAS">Selecione a Filial do Extrato</option>
+            <option>BOAH MATRIZ</option>
+            <option>HORTO</option>
+            <option>SDB</option>
+            <option>VILAS</option>
+            <option>PASEO</option>
+            <option>BARRA</option>
+            <option>SOLAR (ADM)</option>
+          </select>
+          <div className="relative overflow-hidden w-full md:w-auto">
+            <input type="file" accept=".csv,.ofx" onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
+            <button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-medium flex items-center justify-center gap-2 shadow-sm pointer-events-none">
+              <Upload className="w-4 h-4"/> 
+              Importar Extrato (OFX)
+            </button>
+          </div>
         </div>
       </div>
 
