@@ -8,6 +8,7 @@ import { Plus, Trash2, ArrowUpCircle, ArrowDownCircle, Search, Edit2, Pencil, Sa
 import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Area, AreaChart, PieChart, Pie, Cell, Legend, BarChart } from 'recharts';
 import Papa from 'papaparse';
 import { CATEGORIAS } from '@/lib/categorias';
+import RelatoriosModernos from '@/components/RelatoriosModernos';
 
 const generateUUID = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
@@ -795,11 +796,11 @@ export default function Page() {
       <main className="max-w-[1400px] mx-auto px-4 py-6">
         <div className="flex gap-2 p-2 bg-white rounded-xl shadow-sm overflow-x-auto w-full max-w-full mb-6 print:hidden">
           {[
-            { id: 'dash', icon: PieChart, label: 'Dashboard' },
+            { id: 'dash', icon: PieChartIcon, label: 'Dashboard' },
             { id: 'dre', icon: Activity, label: 'DRE' },
             { id: 'contas', icon: Layers, label: 'A Pagar / A Receber' },
             { id: 'metas', icon: TrendingUp, label: 'Metas & Orçamentos' },
-            { id: 'reports', icon: BarChart, label: 'Relatórios' }
+            { id: 'reports', icon: BarChartIcon, label: 'B.I. Avançado' }
           ].map(t => (
             <button key={t.id} onClick={() => setTab(t.id as any)} className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-[11px] md:text-sm font-semibold transition ${tab === t.id ? 'bg-zinc-900 text-white' : 'hover:bg-zinc-100 text-zinc-500'}`}>
               <t.icon className="w-4 h-4 hidden md:block" /> {t.label}
@@ -864,227 +865,7 @@ export default function Page() {
         )}
 
         {tab==='reports' && (
-          <div className="space-y-6 print:m-0 print:p-0 print:block">
-            
-            <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center print:hidden">
-              <div className="flex bg-zinc-100 p-1 rounded-xl w-full sm:w-auto overflow-x-auto">
-                <button onClick={()=>setReportType('geral')} className={`px-4 py-2 text-sm rounded-lg font-medium whitespace-nowrap transition-colors ${reportType==='geral' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}>📊 Geral</button>
-                <button onClick={()=>setReportType('dre')} className={`px-4 py-2 text-sm rounded-lg font-medium whitespace-nowrap transition-colors ${reportType==='dre' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}>📈 Só DRE</button>
-                <button onClick={()=>setReportType('despesas')} className={`px-4 py-2 text-sm rounded-lg font-medium whitespace-nowrap transition-colors ${reportType==='despesas' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}>📉 Despesas</button>
-                <button onClick={()=>setReportType('receitas')} className={`px-4 py-2 text-sm rounded-lg font-medium whitespace-nowrap transition-colors ${reportType==='receitas' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}>💰 Receitas</button>
-              </div>
-              <div className="flex gap-2 w-full sm:w-auto">
-                <button onClick={()=>window.print()} className="flex-1 sm:flex-none bg-zinc-900 hover:bg-black text-white px-4 py-2 rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition"><FileSpreadsheet className="w-4 h-4"/> Salvar PDF</button>
-                <button onClick={exportCsv} className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition"><Download className="w-4 h-4"/> Excel (CSV)</button>
-              </div>
-            </div>
-
-            <div className={`grid grid-cols-1 ${reportType === 'geral' ? 'lg:grid-cols-2' : ''} gap-6`}>
-              
-              {(reportType === 'geral' || reportType === 'dre') && (
-                <Card className={`p-6 ${reportType === 'geral' ? 'col-span-1 lg:col-span-2' : 'col-span-1 max-w-4xl mx-auto w-full'} print:border-none print:shadow-none`}>
-                  <h2 className="font-bold text-lg mb-4">DRE Gerencial</h2>
-                  <div className="overflow-x-auto">
-                    {renderDreTable()}
-                  </div>
-                </Card>
-              )}
-
-              {(reportType === 'geral' || reportType === 'dre') && (
-                <div className="col-span-1 lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6 print:hidden">
-                  <Card className="p-6 flex flex-col justify-center items-center">
-                    <h3 className="font-bold text-sm mb-2 text-zinc-600">Composição da Receita (Saídas vs Lucro)</h3>
-                    <div className="h-64 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={[
-                              { name: 'CMV/CSV', value: totals.cmvCsv, color: '#f87171' },
-                              { name: 'Desp. Operac.', value: totals.despOperacionais, color: '#fb923c' },
-                              { name: 'Financeiro', value: totals.resFinanceiro, color: '#fbbf24' },
-                              { name: 'Impostos', value: totals.impostosLucro, color: '#a78bfa' },
-                              { name: 'Lucro Líquido', value: totals.lucroLiquido > 0 ? totals.lucroLiquido : 0, color: '#34d399' }
-                            ].filter(i => i.value > 0)}
-                            cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={2} dataKey="value"
-                          >
-                            { [
-                              { name: 'CMV/CSV', value: totals.cmvCsv, color: '#f87171' },
-                              { name: 'Desp. Operac.', value: totals.despOperacionais, color: '#fb923c' },
-                              { name: 'Financeiro', value: totals.resFinanceiro, color: '#fbbf24' },
-                              { name: 'Impostos', value: totals.impostosLucro, color: '#a78bfa' },
-                              { name: 'Lucro Líquido', value: totals.lucroLiquido > 0 ? totals.lucroLiquido : 0, color: '#34d399' }
-                            ].filter(i => i.value > 0).map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={entry.color} />
-                            ))}
-                          </Pie>
-                          <Tooltip formatter={(value: any) => BRL.format(value as number)} />
-                          <Legend />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </Card>
-                  
-                  <Card className="p-6 flex flex-col justify-center items-center">
-                    <h3 className="font-bold text-sm mb-2 text-zinc-600">Top 5 Despesas por Categoria</h3>
-                    <div className="h-64 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart
-                          data={Object.entries(totals.porCategoria)
-                            .sort((a: any, b: any) => b[1] - a[1])
-                            .slice(0, 5)
-                            .map(([name, value]) => ({ name: name.substring(0, 15), value }))}
-                          margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" opacity={0.2} vertical={false} />
-                          <XAxis dataKey="name" tick={{fontSize: 10}} interval={0} angle={-15} textAnchor="end" height={60} />
-                          <YAxis tickFormatter={(val) => `R$${(val/1000).toFixed(0)}k`} width={50} tick={{fontSize: 10}} />
-                          <Tooltip formatter={(value: any) => BRL.format(value as number)} cursor={{fill: '#f4f4f5'}} />
-                          <Bar dataKey="value" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </Card>
-                </div>
-              )}
-
-              {reportType === 'receitas' && (
-                <div className={`space-y-6 ${reportType === 'receitas' ? 'col-span-1 max-w-4xl mx-auto w-full' : ''}`}>
-                  <Card className="p-6 bg-emerald-50 border-emerald-200 print:border-2 print:border-zinc-200 print:bg-white">
-                    <h3 className="font-bold text-lg mb-2 flex items-center gap-2 text-emerald-900 print:text-zinc-900"><TrendingUp className="w-5 h-5"/> Total de Receitas</h3>
-                    <div className="text-3xl font-black text-emerald-700 print:text-zinc-900">{BRL.format(totals.receitaBruta)}</div>
-                    <div className="text-xs text-emerald-600/80 mt-1 print:text-zinc-500">Soma de todas as entradas do período</div>
-                  </Card>
-                  
-                  {reportType === 'receitas' && (
-                    <Card className="p-6 print:border-2 print:border-zinc-200 print:shadow-none">
-                      <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Target className="w-5 h-5 text-emerald-600 print:text-zinc-900"/> Principais Fontes de Receita</h3>
-                      
-                      {totals.topFontesReceita.length > 0 ? (
-                        <>
-                          <div className="overflow-x-auto mb-6">
-                            <table className="w-full text-sm">
-                              <thead>
-                                <tr className="border-b text-zinc-500">
-                                  <th className="text-left py-2 font-medium">Fonte / Cliente</th>
-                                  <th className="text-right py-2 font-medium">Valor Recebido</th>
-                                  <th className="text-right py-2 font-medium w-16">%</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {totals.topFontesReceita.map((f, i) => (
-                                  <tr key={i} className="border-b border-zinc-100 hover:bg-zinc-50">
-                                    <td className="py-2.5 truncate max-w-[200px] text-zinc-700">{f.nome}</td>
-                                    <td className="py-2.5 text-right font-medium text-emerald-700">{BRL.format(f.valor as number)}</td>
-                                    <td className="py-2.5 text-right text-xs text-zinc-400">
-                                      {totals.receitaBruta > 0 ? (((f.valor as number) / totals.receitaBruta) * 100).toFixed(1) : 0}%
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                          <div className="h-64 mt-4">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <BarChart data={totals.topFontesReceita.slice(0, 5)} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                                <XAxis type="number" hide />
-                                <YAxis dataKey="nome" type="category" width={120} tick={{ fontSize: 10 }} tickFormatter={(val: string) => val.length > 20 ? val.substring(0,20) + '...' : val} />
-                                <Tooltip formatter={(value: any) => BRL.format(value as number)} />
-                                <Bar dataKey="valor" fill="#059669" radius={[0, 4, 4, 0]} barSize={20} />
-                              </BarChart>
-                            </ResponsiveContainer>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="text-sm text-zinc-500">Nenhuma receita registrada no período.</div>
-                      )}
-                    </Card>
-                  )}
-                </div>
-              )}
-
-              {reportType === 'despesas' && (
-                <Card className={`p-6 print:border-none print:shadow-none ${reportType === 'despesas' ? 'col-span-1 max-w-4xl mx-auto w-full' : ''}`}>
-                  <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><ShoppingCart className="w-5 h-5 text-violet-600 print:text-zinc-900"/> Principais Fornecedores</h3>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b text-zinc-500">
-                          <th className="text-left py-2 font-medium">Fornecedor</th>
-                          <th className="text-right py-2 font-medium">Valor Pago</th>
-                          <th className="text-right py-2 font-medium w-16">%</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-zinc-100">
-                        {totals.topFornecedores.length === 0 ? (
-                          <tr><td colSpan={3} className="text-center py-8 text-zinc-500">Nenhum pagamento registrado neste mês.</td></tr>
-                        ) : (
-                          totals.topFornecedores.map((forn: any, idx: number) => {
-                            const pct = totals.saidas ? (forn.valor / totals.saidas) * 100 : 0;
-                            return (
-                              <tr key={idx} className="hover:bg-zinc-50 transition-colors print:break-inside-avoid">
-                                <td className="py-2.5 text-zinc-800 truncate max-w-[200px]"><span className="text-zinc-400 mr-2 text-xs">{idx+1}.</span>{forn.nome}</td>
-                                <td className="py-2.5 text-right font-bold text-zinc-900">{BRL.format(forn.valor)}</td>
-                                <td className="py-2.5 text-right text-xs text-zinc-500">{pct.toFixed(1)}%</td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </Card>
-              )}
-
-              {reportType === 'despesas' && (
-                <div className={`space-y-6 ${reportType === 'despesas' ? 'col-span-1 max-w-4xl mx-auto w-full' : ''}`}>
-                  <Card className="p-6 print:border-none print:shadow-none">
-                    <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><PieChartIcon className="w-5 h-5 text-amber-500 print:text-zinc-900"/> Despesas por Categoria</h3>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b text-zinc-500">
-                            <th className="text-left py-2 font-medium">Categoria</th>
-                            <th className="text-right py-2 font-medium">Total Acumulado</th>
-                            <th className="text-right py-2 font-medium w-16">%</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-zinc-100">
-                          {Object.entries(totals.porCategoria)
-                            .sort((a:any, b:any) => b[1] - a[1])
-                            .slice(0, reportType === 'despesas' ? 25 : 8)
-                            .map(([cat, val]: any, idx) => {
-                              const pct = totals.saidas ? (val / totals.saidas) * 100 : 0;
-                              return (
-                                <tr key={idx} className="hover:bg-zinc-50 transition-colors print:break-inside-avoid">
-                                  <td className="py-2.5 text-zinc-800 truncate max-w-[200px]">{cat}</td>
-                                  <td className="py-2.5 text-right font-bold text-zinc-900">{BRL.format(val)}</td>
-                                  <td className="py-2.5 text-right text-xs text-zinc-500">{pct.toFixed(1)}%</td>
-                                </tr>
-                              );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </Card>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <Card className="p-5 border-amber-200 bg-amber-50 text-amber-900 print:border-2 print:border-zinc-200 print:bg-white print:text-zinc-900 print:shadow-none">
-                      <h3 className="font-bold text-xs mb-1 text-amber-900 print:text-zinc-900 opacity-80">Provisão Impostos</h3>
-                      <div className="text-xl font-black">{BRL.format(totals.impostosProvisao)}</div>
-                      <div className="text-[10px] mt-1 opacity-70 print:opacity-100">Total das Guias retidas</div>
-                    </Card>
-                    <Card className="p-5 bg-violet-600 text-white shadow-lg shadow-violet-200 print:border-2 print:border-zinc-200 print:bg-white print:text-zinc-900 print:shadow-none">
-                      <h3 className="font-bold text-xs mb-1 opacity-80 print:opacity-100">Saldo Futuro</h3>
-                      <div className="text-xl font-black">{BRL.format((totals.saldoHistoricoRealizado||0) + (totals.aReceber||0) - (totals.aPagar||0))}</div>
-                      <div className="text-[10px] mt-1 opacity-70 print:opacity-100">Saldo final projetado</div>
-                    </Card>
-                  </div>
-                </div>
-              )}
-
-            </div>
-          </div>
+          <RelatoriosModernos contas={contas.trGeral} />
         )}
 
         {tab==='metas' && (

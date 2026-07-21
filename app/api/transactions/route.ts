@@ -13,7 +13,7 @@ export async function GET() {
       .from('transactions')
       .select('*')
       .order('data', { ascending: false })
-      .limit(100);
+      .limit(10000);
 
     if (error) throw error;
 
