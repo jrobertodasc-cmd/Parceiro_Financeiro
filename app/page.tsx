@@ -9,6 +9,7 @@ import { ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, C
 import Papa from 'papaparse';
 import { CATEGORIAS } from '@/lib/categorias';
 import RelatoriosModernos from '@/components/RelatoriosModernos';
+import Conciliacao from '@/components/Conciliacao';
 
 const generateUUID = () => {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
@@ -22,7 +23,7 @@ const BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' 
 
 export default function Page() {
   const [logged, setLogged] = useState(false);
-  const [tab, setTab] = useState<'dash' | 'dre' | 'contas' | 'reports' | 'metas'>('dash');
+  const [tab, setTab] = useState<'dash' | 'dre' | 'contas' | 'reports' | 'metas' | 'conciliacao'>('dash');
   const [listFilter, setListFilter] = useState<'pendentes' | 'realizados' | 'todas'>('pendentes');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [showModal, setShowModal] = useState(false);
@@ -799,6 +800,7 @@ export default function Page() {
             { id: 'dash', icon: PieChartIcon, label: 'Dashboard' },
             { id: 'dre', icon: Activity, label: 'DRE' },
             { id: 'contas', icon: Layers, label: 'A Pagar / A Receber' },
+            { id: 'conciliacao', icon: ArrowLeftRight, label: 'Conciliação' },
             { id: 'metas', icon: TrendingUp, label: 'Metas & Orçamentos' },
             { id: 'reports', icon: BarChartIcon, label: 'B.I. Avançado' }
           ].map(t => (
@@ -866,6 +868,10 @@ export default function Page() {
 
         {tab==='reports' && (
           <RelatoriosModernos contas={contas.trGeral} />
+        )}
+
+        {tab==='conciliacao' && (
+          <Conciliacao contas={transactions} onSuccess={fetchData} />
         )}
 
         {tab==='metas' && (
